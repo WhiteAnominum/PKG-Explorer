@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__
+from . import __version__, kde_dnd
 from .cli import human_size
 from .pkg import ExtractionCancelled, Node, Pkg, PkgError
 
@@ -268,16 +268,29 @@ class PkgTreeView(QTreeView):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
 
     def startDrag(self, supported_actions):
-        nodes = self.window_.selected_nodes()
+        window = self.window_
+        nodes = window.selected_nodes()
         if not nodes:
             return
-        temp = self.window_.extract_to_temp(nodes)
-        if temp is None:
-            return
-        mime = QMimeData()
-        mime.setUrls([QUrl.fromLocalFile(os.path.join(temp, n.name)) for n in nodes])
+        if window.kde_dnd is not None:
+            # KDE: o destino nos avisa onde soltaram e extraímos direto lá (ver kde_dnd.py).
+            window.dragged_nodes = nodes
+            mime = window.kde_dnd.mime_data()
+        else:
+            # Outros ambientes: não há protocolo para isso, então extraímos antes numa pasta
+            # temporária e arrastamos os arquivos prontos.
+            temp = window.extract_to_temp(nodes)
+            if temp is None:
+                return
+            mime = QMimeData()
+            mime.setUrls([QUrl.fromLocalFile(os.path.join(temp, n.name)) for n in nodes])
         drag = QDrag(self)
         drag.setMimeData(mime)
+        icon = self.model().index(self.currentIndex().row(), 0, self.currentIndex().parent()).data(
+            Qt.DecorationRole
+        )
+        if icon is not None:
+            drag.setPixmap(icon.pixmap(32, 32))
         drag.exec(Qt.CopyAction)
 
 
@@ -289,6 +302,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.pkg: Pkg | None = None
         self.model: PkgTreeModel | None = None
+        self.dragged_nodes: list[Node] = []
+        self._extracting = False
+        self.kde_dnd: kde_dnd.DndExtractService | None = None
+        if kde_dnd.is_available():
+            service = kde_dnd.DndExtractService(self.extract_dropped, self)
+            if service.registered:
+                self.kde_dnd = service
         self.setWindowTitle("PKG Explorer")
         self.resize(900, 640)
         self.setAcceptDrops(True)
@@ -512,6 +532,29 @@ class MainWindow(QMainWindow):
         if run_extraction(self, self.pkg, [(self.pkg.root, target)]):
             self.statusBar().showMessage(f"Extraído para {target}", 8000)
             QDesktopServices.openUrl(QUrl.fromLocalFile(target))
+
+    def extract_dropped(self, dest: str) -> None:
+        """Chamado (via D-Bus) quando os itens arrastados são soltos numa pasta no KDE."""
+        nodes, self.dragged_nodes = self.dragged_nodes, []
+        if not nodes or self.pkg is None:
+            return
+        if self._extracting:
+            QMessageBox.information(self, "Aguarde", "Já existe uma extração em andamento.")
+            return
+        if not os.path.isdir(dest):
+            QMessageBox.warning(
+                self, "Destino não suportado",
+                f"Só é possível extrair para pastas locais.\n\nDestino: {dest}",
+            )
+            return
+        if not self.confirm_overwrite(nodes, dest):
+            return
+        self._extracting = True
+        try:
+            if run_extraction(self, self.pkg, [(n, dest) for n in nodes]):
+                self.statusBar().showMessage(f"Extraído para {dest}", 8000)
+        finally:
+            self._extracting = False
 
     def extract_to_temp(self, nodes: list[Node]) -> str | None:
         size = sum(n.total_size() for n in nodes)
