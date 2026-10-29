@@ -7,9 +7,10 @@ arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados
 
 ## Créditos
 
-- A lógica de leitura de PKG/PFS foi adaptada do [shadPS4](https://github.com/shadps4-emu/shadPS4)
+- A lógica de leitura de PKG/PFS foi adaptada do
+  [ShadPs4Plus PKG Extractor](https://github.com/AzaharPlus/shadPS4Plus) (AzaharPlus), que por sua
+  vez usa código que fazia parte do emulador [shadPS4](https://github.com/shadps4-emu/shadPS4)
   (GPL-2.0-or-later).
-- Inspirado no ShadPs4Plus PKG Extractor.
 
 ## Licença
 

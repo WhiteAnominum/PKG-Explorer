@@ -4,7 +4,8 @@ Navegador gráfico de arquivos `.pkg` de PS4 (estilo gerenciador de arquivos com
 lista o conteúdo do PKG/PFS sem extrair tudo e permite extrair arquivos ou pastas individuais.
 
 - Linguagem: Python 3, interface em Qt (PySide6).
-- A lógica de leitura de PKG/PFS é adaptada do shadPS4 (`src/core/file_format/pkg.cpp`, `pfs.h`, etc.),
+- A lógica de leitura de PKG/PFS é adaptada do ShadPs4Plus (https://github.com/AzaharPlus/shadPS4Plus,
+  baseado no shadPS4): `src/core/file_format/pkg.cpp`, `pfs.h`, `src/core/crypto/`, etc.,
   licenciado como GPL-2.0-or-later. Este projeto usa a mesma licença.
 - Arquivos com código adaptado devem ter no topo `SPDX-License-Identifier: GPL-2.0-or-later`
   e indicar o arquivo de origem no shadPS4.
