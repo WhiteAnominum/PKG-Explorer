@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.WhiteAnominum.PKGExplorer</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>PKG Explorer</name>
+  <summary>Browse PS4 .pkg files and extract only what you need</summary>
+  <summary xml:lang="pt-BR">Navegue por arquivos .pkg de PS4 e extraia só o que quiser</summary>
+  <description>
+    <p>
+      PKG Explorer opens PS4 package files (.pkg) like an archive: see the files and folders
+      inside without extracting everything, then extract only the ones you want.
+    </p>
+    <ul>
+      <li>Opens packages of tens of gigabytes in under a second</li>
+      <li>Shows the game icon, title, Title ID, type (game, update or DLC) and version</li>
+      <li>Extract selected files and folders, or the whole package using the shadPS4 folder layout</li>
+      <li>Drag files out to your file manager; on KDE Plasma they are extracted straight to where you drop them</li>
+    </ul>
+    <p>
+      Supports the same packages as the shadPS4 extractor (fake/fpkg packages).
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.WhiteAnominum.PKGExplorer.desktop</launchable>
+  <url type="homepage">https://github.com/WhiteAnominum/PKG-Explorer</url>
+  <url type="bugtracker">https://github.com/WhiteAnominum/PKG-Explorer/issues</url>
+  <developer id="io.github.whiteanominum">
+    <name>WhiteAnominum</name>
+  </developer>
+  <provides>
+    <mediatype>application/x-ps4-pkg</mediatype>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>Archiving</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-29"/>
+  </releases>
+</component>
