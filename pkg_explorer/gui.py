@@ -39,12 +39,13 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStyle,
     QToolBar,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
 )
 
-from . import __version__, kde_dnd
+from . import __version__, desktop, kde_dnd
 from .cli import human_size
 from .pkg import ExtractionCancelled, Node, Pkg, PkgError
 
@@ -326,6 +327,10 @@ class MainWindow(QMainWindow):
             style.standardIcon(QStyle.SP_DirIcon), "Extrair tudo…", self
         )
         self.act_extract_all.triggered.connect(self.extract_all)
+        self.act_integrate = QAction("Abrir arquivos .pkg com o PKG Explorer", self)
+        self.act_integrate.setCheckable(True)
+        self.act_integrate.setChecked(desktop.is_installed())
+        self.act_integrate.toggled.connect(self.toggle_integration)
         self.act_about = QAction("Sobre", self)
         self.act_about.triggered.connect(self.about)
 
@@ -336,7 +341,17 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
-        toolbar.addAction(self.act_about)
+        menu = QMenu(self)
+        if sys.platform.startswith("linux"):
+            menu.addAction(self.act_integrate)
+            menu.addSeparator()
+        menu.addAction(self.act_about)
+        menu_button = QToolButton()
+        menu_button.setIcon(QIcon.fromTheme("application-menu", style.standardIcon(QStyle.SP_TitleBarMenuButton)))
+        menu_button.setToolTip("Menu")
+        menu_button.setPopupMode(QToolButton.InstantPopup)
+        menu_button.setMenu(menu)
+        toolbar.addWidget(menu_button)
         self.addToolBar(toolbar)
 
         # Cabeçalho com ícone e informações do PKG.
@@ -593,6 +608,19 @@ class MainWindow(QMainWindow):
         menu.addAction("Copiar caminho", lambda: QApplication.clipboard().setText(node.path))
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
+    def toggle_integration(self, enabled: bool) -> None:
+        try:
+            if enabled:
+                desktop.install()
+                self.statusBar().showMessage(
+                    "Pronto: arquivos .pkg de PS4 agora abrem com o PKG Explorer.", 8000
+                )
+            else:
+                desktop.uninstall()
+                self.statusBar().showMessage("Associação de arquivos .pkg removida.", 8000)
+        except OSError as exc:
+            QMessageBox.critical(self, "Erro", str(exc))
+
     def about(self) -> None:
         QMessageBox.about(
             self,
@@ -629,7 +657,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
     app = QApplication(argv)
     app.setApplicationName("PKG Explorer")
-    app.setWindowIcon(QIcon.fromTheme("package-x-generic"))
+    app.setDesktopFileName(desktop.APP_ID)  # Wayland: liga a janela ao atalho/ícone
+    app.setWindowIcon(QIcon(str(desktop.DATA_DIR / "pkg-explorer.svg")))
     window = MainWindow()
     window.show()
     if len(argv) > 1:
