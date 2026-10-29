@@ -56,7 +56,20 @@ def main(argv=None) -> None:
     p.add_argument("pkg")
     p.add_argument("paths", nargs="*", help="caminhos dentro do PKG, ex.: sce_sys/icon0.png")
     p.add_argument("-o", "--output", default=".", help="pasta de destino")
+    sub.add_parser("integrate", help="associa arquivos .pkg ao PKG Explorer e cria o atalho no menu")
+    sub.add_parser("unintegrate", help="desfaz o 'integrate'")
     args = parser.parse_args(argv)
+
+    if args.command in ("integrate", "unintegrate"):
+        from . import desktop
+
+        if args.command == "integrate":
+            desktop.install()
+            print(f"Pronto. Arquivos .pkg de PS4 agora abrem com: {desktop.describe_command()}")
+        else:
+            removed = desktop.uninstall()
+            print("Integração removida." if removed else "Nada para remover.")
+        return
 
     try:
         with Pkg(args.pkg) as pkg:
