@@ -7,12 +7,11 @@ arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados
 - Mostra o ícone, título, Title ID, tipo (jogo base, atualização ou DLC) e versão.
 - Extraia arquivos ou pastas selecionados, ou o pacote inteiro (na mesma estrutura de pastas
   usada pelo shadPS4: `CUSA00000`, `CUSA00000-patch`, `CUSA00000/<DLC>`).
-- Arraste arquivos e pastas da janela para o gerenciador de arquivos, como num zip. No KDE
-  (Dolphin, área de trabalho do Plasma) a extração é feita direto na pasta onde você soltar,
-  usando o mesmo protocolo do Ark. Em outros ambientes, os arquivos são extraídos antes para
-  uma pasta temporária.
+- Arraste arquivos e pastas da janela para o gerenciador de arquivos, como num zip
+  (veja [KDE Plasma e outros ambientes](#kde-plasma-e-outros-ambientes)).
 - Duplo clique abre o arquivo no programa padrão.
 - Filtro por nome.
+- Associação de arquivos: dê duplo clique num `.pkg` no gerenciador de arquivos para abri-lo.
 
 Funciona com os mesmos PKGs que o extrator do shadPS4 (PKGs "fake"/fpkg).
 
@@ -43,6 +42,36 @@ Linha de comando:
 .venv/bin/pkg-explorer-cli extract jogo.pkg sce_sys/icon0.png eboot.bin -o pasta_destino
 .venv/bin/pkg-explorer-cli extract jogo.pkg -o pasta_destino     # tudo
 ```
+
+### Abrir arquivos .pkg com duplo clique
+
+No menu (☰) da janela, marque **Abrir arquivos .pkg com o PKG Explorer**, ou rode:
+
+```sh
+.venv/bin/pkg-explorer-cli integrate      # para desfazer: unintegrate
+```
+
+Isso cria, só para o seu usuário (em `~/.local/share`), o atalho no menu de aplicativos, o
+ícone e um tipo de arquivo próprio, `application/x-ps4-pkg`. A extensão `.pkg` também é usada
+por instaladores do macOS; o PKG de PS4 é reconhecido pela assinatura no início do arquivo, então
+os `.pkg` de macOS não são afetados.
+
+Se você mover a pasta do PKG Explorer de lugar, rode o `integrate` de novo.
+
+## KDE Plasma e outros ambientes
+
+Arrastar arquivos para fora da janela funciona de jeitos diferentes dependendo do ambiente:
+
+| | KDE Plasma | GNOME, XFCE, Cinnamon e outros |
+|---|---|---|
+| Como funciona | O destino (Dolphin, área de trabalho) avisa o PKG Explorer onde os itens foram soltos, e a extração é feita **direto naquela pasta** | Os itens são extraídos primeiro para uma **pasta temporária**, e só então o arrasto começa |
+| Arquivos grandes | Sem espera para começar a arrastar; o progresso aparece na janela do PKG Explorer depois de soltar | É preciso esperar a extração terminar antes de arrastar; acima de 512 MB o programa pede confirmação |
+| Espaço em disco | Só o destino | Destino + cópia temporária (apagada ao fechar o programa) |
+
+Isso acontece porque não existe um padrão comum entre os ambientes para "extrair onde o usuário
+soltar". O KDE tem um protocolo próprio (o mesmo usado pelo Ark), que o PKG Explorer implementa.
+Fora do KDE, para arquivos grandes, prefira o botão **Extrair selecionados…**, que grava direto
+na pasta escolhida.
 
 ## Créditos
 
