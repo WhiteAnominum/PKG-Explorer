@@ -16,9 +16,11 @@ from PySide6.QtCore import (
     QMimeData,
     QModelIndex,
     QObject,
+    QSettings,
     QSortFilterProxyModel,
     Qt,
     QThread,
+    QTimer,
     QUrl,
     Signal,
 )
@@ -342,7 +344,7 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
         menu = QMenu(self)
-        if sys.platform.startswith("linux"):
+        if desktop.is_supported():
             menu.addAction(self.act_integrate)
             menu.addSeparator()
         menu.addAction(self.act_about)
@@ -621,6 +623,27 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             QMessageBox.critical(self, "Erro", str(exc))
 
+    def ask_integration(self) -> None:
+        """Pergunta (uma vez só) se arquivos .pkg devem abrir com este programa. Usado no
+        AppImage, que não tem instalação: no Flatpak a associação vem do próprio pacote."""
+        settings = QSettings()
+        if settings.value("integration/asked", False, bool):
+            return
+        settings.setValue("integration/asked", True)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle("Abrir arquivos .pkg")
+        box.setText("Quer que arquivos .pkg de PS4 abram com o PKG Explorer ao dar duplo clique?")
+        box.setInformativeText(
+            "Também cria um atalho no menu de aplicativos. Dá para mudar isso depois no "
+            "menu ☰ da janela."
+        )
+        yes = box.addButton("Sim", QMessageBox.YesRole)
+        box.addButton("Agora não", QMessageBox.NoRole)
+        box.exec()
+        if box.clickedButton() is yes:
+            self.act_integrate.setChecked(True)
+
     def about(self) -> None:
         QMessageBox.about(
             self,
@@ -657,10 +680,17 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
     app = QApplication(argv)
     app.setApplicationName("PKG Explorer")
+    app.setOrganizationName("PKG Explorer")
     app.setDesktopFileName(desktop.APP_ID)  # Wayland: liga a janela ao atalho/ícone
     app.setWindowIcon(QIcon(str(desktop.DATA_DIR / "pkg-explorer.svg")))
+    try:
+        desktop.repair_if_moved()
+    except OSError:
+        pass
     window = MainWindow()
     window.show()
+    if desktop.is_supported() and desktop.is_appimage() and not desktop.is_installed():
+        QTimer.singleShot(0, window.ask_integration)
     if len(argv) > 1:
         window.open_pkg(argv[1])
     return app.exec()
