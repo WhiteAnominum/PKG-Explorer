@@ -1,0 +1,20 @@
+# Jogos/pacotes (protegidos por direitos autorais e enormes)
+*.pkg
+*.PKG
+
+# Ferramentas externas
+*.appimage
+*.AppImage
+
+# Saídas de extração
+extracted/
+*_extracted/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
