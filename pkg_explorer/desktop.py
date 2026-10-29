@@ -79,7 +79,9 @@ def _refresh() -> None:
     _run("update-mime-database", str(data / "mime"))
     _run("update-desktop-database", str(data / "applications"))
     _run("gtk-update-icon-cache", "-f", "-t", str(data / "icons" / "hicolor"))
-    _run("kbuildsycoca6")  # KDE: atualiza o cache de aplicativos/associações
+    # KDE: atualiza o cache de aplicativos/associações (Plasma 6 e Plasma 5).
+    _run("kbuildsycoca6")
+    _run("kbuildsycoca5")
 
 
 def install(make_default: bool = True) -> list[Path]:
@@ -108,6 +110,48 @@ def uninstall() -> list[Path]:
 
 def is_installed() -> bool:
     return _paths()["desktop"].exists()
+
+
+def is_supported() -> bool:
+    """No Flatpak a integração vem do próprio pacote; fora do Linux não se aplica."""
+    return sys.platform.startswith("linux") and "FLATPAK_ID" not in os.environ
+
+
+def is_appimage() -> bool:
+    return bool(os.environ.get("APPIMAGE"))
+
+
+def _installed_program() -> str | None:
+    """Primeiro item do Exec= do atalho instalado (o programa que ele abre)."""
+    try:
+        text = _paths()["desktop"].read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("Exec="):
+            try:
+                return shlex.split(line[len("Exec="):])[0]
+            except (ValueError, IndexError):
+                return None
+    return None
+
+
+def repair_if_moved() -> bool:
+    """Se a integração está instalada mas aponta para um programa que não existe mais (pasta
+    movida, AppImage apagado) ou para um AppImage antigo enquanto rodamos de um AppImage
+    (atualização), aponta de novo para esta instalação. Retorna True se corrigiu."""
+    if not is_supported() or not is_installed():
+        return False
+    installed = _installed_program()
+    current = launch_command()[0]
+    if installed == current:
+        return False
+    moved = installed is None or not os.path.exists(installed)
+    appimage_update = is_appimage() and not moved and installed.lower().endswith(".appimage")
+    if not (moved or appimage_update):
+        return False
+    install(make_default=False)
+    return True
 
 
 def describe_command() -> str:
