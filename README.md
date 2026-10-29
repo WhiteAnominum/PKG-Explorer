@@ -7,7 +7,11 @@ arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados
 - Mostra o ícone, título, Title ID, tipo (jogo base, atualização ou DLC) e versão.
 - Extraia arquivos ou pastas selecionados, ou o pacote inteiro (na mesma estrutura de pastas
   usada pelo shadPS4: `CUSA00000`, `CUSA00000-patch`, `CUSA00000/<DLC>`).
-- Arraste arquivos da janela para o gerenciador de arquivos, ou dê duplo clique para abrir.
+- Arraste arquivos e pastas da janela para o gerenciador de arquivos, como num zip. No KDE
+  (Dolphin, área de trabalho do Plasma) a extração é feita direto na pasta onde você soltar,
+  usando o mesmo protocolo do Ark. Em outros ambientes, os arquivos são extraídos antes para
+  uma pasta temporária.
+- Duplo clique abre o arquivo no programa padrão.
 - Filtro por nome.
 
 Funciona com os mesmos PKGs que o extrator do shadPS4 (PKGs "fake"/fpkg).
