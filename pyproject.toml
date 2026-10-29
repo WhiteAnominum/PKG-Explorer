@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pkg-explorer"
+dynamic = ["version"]
+description = "Navegador gráfico de arquivos .pkg de PS4: veja o conteúdo e extraia só o que quiser"
+readme = "README.md"
+license = "GPL-2.0-or-later"
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography>=41",
+    "PySide6-Essentials>=6.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/WhiteAnominum/PKG-Explorer"
+
+[project.scripts]
+pkg-explorer-cli = "pkg_explorer.cli:main"
+
+[project.gui-scripts]
+pkg-explorer = "pkg_explorer.gui:main"
+
+[tool.setuptools]
+packages = ["pkg_explorer"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pkg_explorer.__version__" }
