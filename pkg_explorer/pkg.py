@@ -200,6 +200,17 @@ class Pkg:
             return "dlc"
         return "game"
 
+    @property
+    def output_folder_name(self) -> str:
+        """Pasta usada pelo extrator original / shadPS4: TITLEID, TITLEID-patch ou TITLEID/DLC."""
+        if self.kind == "patch":
+            return f"{self.title_id}-patch"
+        if self.kind == "dlc":
+            parts = str(self.sfo.get("CONTENT_ID", self.content_id)).split("-")
+            if len(parts) > 2:
+                return os.path.join(self.title_id, parts[2])
+        return self.title_id
+
     # ---- chaves ----
 
     def _derive_keys(self) -> None:
@@ -225,12 +236,13 @@ class Pkg:
         self._pfs = crypto.PfsDecryptor(data_key, tweak_key)
 
     def read_entry(self, entry: PkgEntry) -> bytes:
-        data = self._read(entry.offset, entry.size)
-        if entry.id in NP_ENTRY_IDS:
-            padded = data + b"\x00" * (-len(data) % 16)
-            iv_key = crypto.iv_key_hash256(entry.raw + self._dk3)
-            data = crypto.aes_cbc_decrypt(iv_key, padded)[: entry.size]
-        return data
+        if entry.id not in NP_ENTRY_IDS:
+            return self._read(entry.offset, entry.size)
+        # O AES-CBC trabalha em blocos de 16 bytes: o último bloco cifrado continua no arquivo
+        # além de `size`. (O original lê memória fora do buffer aqui e erra os últimos bytes.)
+        padded = self._read(entry.offset, entry.size + (-entry.size % 16))
+        iv_key = crypto.iv_key_hash256(entry.raw + self._dk3)
+        return crypto.aes_cbc_decrypt(iv_key, padded)[: entry.size]
 
     # ---- PFS ----
 
