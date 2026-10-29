@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=PKG Explorer
+GenericName=PS4 PKG Explorer
+GenericName[pt_BR]=Explorador de PKG de PS4
+Comment=Browse PS4 .pkg files and extract only what you need
+Comment[pt_BR]=Navegue por arquivos .pkg de PS4 e extraia só o que quiser
+Exec=pkg-explorer %f
+Icon=io.github.WhiteAnominum.PKGExplorer
+Terminal=false
+Categories=Utility;Archiving;
+MimeType=application/x-ps4-pkg;
+Keywords=ps4;pkg;extract;shadps4;
+StartupWMClass=io.github.WhiteAnominum.PKGExplorer
