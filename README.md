@@ -17,6 +17,24 @@ Funciona com os mesmos PKGs que o extrator do shadPS4 (PKGs "fake"/fpkg).
 
 ## Instalação
 
+### AppImage
+
+Baixe o `PKG-Explorer-x86_64.AppImage` na página de
+[Releases](https://github.com/WhiteAnominum/PKG-Explorer/releases), dê permissão de execução e
+abra:
+
+```sh
+chmod +x PKG-Explorer-x86_64.AppImage
+./PKG-Explorer-x86_64.AppImage
+```
+
+Na primeira vez, ele pergunta se arquivos `.pkg` devem abrir com o PKG Explorer. A linha de
+comando também está disponível: `./PKG-Explorer-x86_64.AppImage --cli info jogo.pkg`.
+
+Para gerar o AppImage a partir do código: `./packaging/appimage/build.sh` (resultado em `dist/`).
+
+### A partir do código-fonte
+
 Requer Python 3.10 ou mais recente.
 
 ```sh
