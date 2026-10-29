@@ -56,7 +56,8 @@ Isso cria, só para o seu usuário (em `~/.local/share`), o atalho no menu de ap
 por instaladores do macOS; o PKG de PS4 é reconhecido pela assinatura no início do arquivo, então
 os `.pkg` de macOS não são afetados.
 
-Se você mover a pasta do PKG Explorer de lugar, rode o `integrate` de novo.
+Se você mover o PKG Explorer de lugar (ou atualizar o AppImage), a associação é corrigida
+automaticamente na próxima vez que ele for aberto.
 
 ## KDE Plasma e outros ambientes
 
