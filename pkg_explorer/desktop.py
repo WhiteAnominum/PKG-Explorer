@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Integração com o desktop Linux (só para o usuário atual, em ~/.local/share):
-tipo MIME application/x-ps4-pkg, atalho no menu, ícone e associação de arquivos .pkg.
+"""Linux desktop integration (for the current user only, in ~/.local/share): the
+application/x-ps4-pkg MIME type, the menu shortcut, icons and the .pkg file association.
 
-No Flatpak o atalho e o tipo MIME já são exportados pelo próprio Flatpak, mas ele remove a
-detecção pela assinatura do arquivo (<magic>) e rebaixa a prioridade do *.pkg, para que apps não
-possam tomar extensões de outros tipos. Como .pkg já é application/x-xar (instalador do macOS),
-o sistema continuaria abrindo no programa errado. Por isso, também no Flatpak, instalamos o tipo
-MIME completo na pasta do usuário (o atalho continua sendo o exportado pelo Flatpak)."""
+Under Flatpak the shortcut and the MIME type are already exported by Flatpak itself, but it strips
+detection by file signature (<magic>) and lowers the priority of *.pkg, so that apps cannot take
+over extensions that belong to other types. Since .pkg is already application/x-xar (macOS
+installer), the system would keep opening it in the wrong app. That is why, under Flatpak too, we
+install the complete MIME type in the user's folder (the shortcut is still the one Flatpak exports)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def in_flatpak() -> bool:
 
 def _data_home() -> Path:
     if in_flatpak():
-        # Dentro do Flatpak, XDG_DATA_HOME aponta para ~/.var/app/<id>; queremos a do sistema.
+        # Inside Flatpak, XDG_DATA_HOME points to ~/.var/app/<id>; we want the host's.
         return Path(os.environ.get("HOST_XDG_DATA_HOME") or Path.home() / ".local" / "share")
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
 
@@ -40,14 +40,14 @@ def _paths() -> dict[str, Path]:
         "mime": data / "mime" / "packages" / f"{APP_ID}.xml",
         "mime_icon": icons / "mimetypes" / f"{MIME_TYPE.replace('/', '-')}.svg",
     }
-    if not in_flatpak():  # no Flatpak, atalho e ícone do app vêm do próprio pacote
+    if not in_flatpak():  # under Flatpak, the shortcut and app icon come from the package
         paths["desktop"] = data / "applications" / f"{APP_ID}.desktop"
         paths["app_icon"] = icons / "apps" / f"{APP_ID}.svg"
     return paths
 
 
 def _desktop_quote(arg: str) -> str:
-    """Aspas no formato da especificação Desktop Entry (para caminhos com espaços)."""
+    """Quotes an argument as the Desktop Entry spec requires (for paths with spaces)."""
     if not any(c in arg for c in ' \t\n"\'\\><~|&;$*?#()`'):
         return arg
     escaped = arg.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
@@ -55,7 +55,7 @@ def _desktop_quote(arg: str) -> str:
 
 
 def launch_command() -> list[str]:
-    """Comando que abre a interface gráfica desta instalação."""
+    """Command that opens the graphical interface of this installation."""
     appimage = os.environ.get("APPIMAGE")
     if appimage:
         return [appimage]
@@ -94,7 +94,7 @@ def _refresh() -> None:
     _run("update-mime-database", str(data / "mime"))
     _run("update-desktop-database", str(data / "applications"))
     _run("gtk-update-icon-cache", "-f", "-t", str(data / "icons" / "hicolor"))
-    # KDE: atualiza o cache de aplicativos/associações (Plasma 6 e Plasma 5).
+    # KDE: refresh the application/association cache (Plasma 6 and Plasma 5).
     _run("kbuildsycoca6")
     _run("kbuildsycoca5")
 
@@ -133,7 +133,7 @@ def is_supported() -> bool:
 
 
 def should_ask_on_first_run() -> bool:
-    """AppImage e Flatpak não têm um passo de instalação que associe os .pkg sozinho."""
+    """AppImage and Flatpak have no install step that associates .pkg files by itself."""
     return is_supported() and (is_appimage() or in_flatpak()) and not is_installed()
 
 
@@ -142,7 +142,7 @@ def is_appimage() -> bool:
 
 
 def _installed_program() -> str | None:
-    """Primeiro item do Exec= do atalho instalado (o programa que ele abre)."""
+    """First item of Exec= in the installed shortcut (the program it opens)."""
     try:
         text = _paths()["desktop"].read_text(encoding="utf-8")
     except OSError:
@@ -157,9 +157,9 @@ def _installed_program() -> str | None:
 
 
 def repair_if_moved() -> bool:
-    """Se a integração está instalada mas aponta para um programa que não existe mais (pasta
-    movida, AppImage apagado) ou para um AppImage antigo enquanto rodamos de um AppImage
-    (atualização), aponta de novo para esta instalação. Retorna True se corrigiu."""
+    """If the integration is installed but points to a program that no longer exists (folder
+    moved, AppImage deleted), or to an old AppImage while we run from an AppImage (update),
+    point it to this installation again. Returns True if it was fixed."""
     if not is_supported() or in_flatpak() or not is_installed():
         return False
     installed = _installed_program()
