@@ -13,7 +13,11 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   appimage:
+    needs: tests
     runs-on: ubuntu-24.04
     env:
       # O appimagetool também é um AppImage; sem FUSE no runner, ele se extrai e roda.
@@ -32,6 +36,7 @@ jobs:
           if-no-files-found: error
 
   flatpak:
+    needs: tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
