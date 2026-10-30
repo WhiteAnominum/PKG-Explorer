@@ -1,4 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""PKG Explorer: navegue e extraia o conteúdo de PKGs de PS4."""
+"""PKG Explorer: browse and extract the contents of PS4 PKG files."""
 
 __version__ = "1.1"
