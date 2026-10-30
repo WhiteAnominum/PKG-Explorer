@@ -58,6 +58,24 @@ class ExtractionCancelled(Exception):
     pass
 
 
+def check_name(name: str) -> str:
+    """Nomes vêm de dentro do PKG: um PKG malicioso pode usar "../" ou "/" para gravar fora da
+    pasta de destino ao extrair ("Zip Slip"). Nenhum PKG legítimo usa esses nomes."""
+    if name in ("", ".", "..") or any(c in name for c in "/\\\0"):
+        raise PkgError(_("invalid file name in the PKG: {name!r}").format(name=name))
+    return name
+
+
+def _safe_target(dest_dir: str, name: str) -> str:
+    """Caminho de `name` dentro de `dest_dir`, garantindo que não escapa de `dest_dir`
+    (nem por nome, nem por links simbólicos já existentes no destino)."""
+    target = os.path.join(dest_dir, check_name(name))
+    base = os.path.realpath(dest_dir)
+    if os.path.commonpath([base, os.path.realpath(target)]) != base:
+        raise PkgError(_("refusing to write outside the destination folder: {path}").format(path=target))
+    return target
+
+
 @dataclass
 class PkgEntry:
     id: int
@@ -363,6 +381,7 @@ class Pkg:
                 return
             visited.add(dir_ino)
             for name, ino, typ in self._read_dir(self._inodes[dir_ino]):
+                check_name(name)
                 if typ == PFS_DIR:
                     child = node.children.get(name) or Node(name, True, node)
                     node.children[name] = child
@@ -426,7 +445,8 @@ class Pkg:
     ) -> str:
         """Extrai `node` (arquivo ou pasta) para dentro de `dest_dir`. Retorna o caminho criado.
         A raiz é extraída diretamente em `dest_dir`."""
-        target = os.path.join(os.fspath(dest_dir), node.name) if node.parent else os.fspath(dest_dir)
+        dest_dir = os.fspath(dest_dir)
+        target = _safe_target(dest_dir, node.name) if node.parent else dest_dir
         if node.is_dir:
             os.makedirs(target, exist_ok=True)
             for child in node.children.values():
@@ -434,8 +454,11 @@ class Pkg:
             return target
 
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+        # O_NOFOLLOW: não grava através de um link simbólico que já esteja no destino.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+        out = os.fdopen(os.open(target, flags, 0o644), "wb")  # fora do try: se falhar, nada a apagar
         try:
-            with open(target, "wb") as out:
+            with out:
                 for chunk in self.iter_file(node):
                     if cancel is not None and cancel.is_set():
                         raise ExtractionCancelled()
