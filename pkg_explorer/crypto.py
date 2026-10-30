@@ -17,7 +17,7 @@ def _rsa_pkcs1v15_decrypt(ciphertext: bytes, modulus: int, private_exponent: int
     size = (modulus.bit_length() + 7) // 8
     m = pow(int.from_bytes(ciphertext, "big"), private_exponent, modulus).to_bytes(size, "big")
     if m[0] != 0 or m[1] != 2:
-        raise ValueError("padding RSA inválido")
+        raise ValueError("invalid RSA padding")
     sep = m.index(0, 2)
     return m[sep + 1 :]
 
