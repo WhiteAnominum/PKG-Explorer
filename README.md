@@ -17,6 +17,8 @@ A graphical tool to browse the contents of PS4 `.pkg` files as if they were an a
   (see [KDE Plasma and other desktops](#kde-plasma-and-other-desktops)).
 - Double-click a file to open it with its default application.
 - Filter by name.
+- Integrity check: a quick check when the PKG is opened (warns about damaged files) and a full
+  check in ☰ → **Verify integrity…**, which reads the whole file (about a minute per 10 GB).
 - File association: double-click a `.pkg` in your file manager to open it.
 - English and Portuguese interface, chosen from the system language.
 
@@ -98,6 +100,7 @@ Command line:
 .venv/bin/pkg-explorer-cli list game.pkg
 .venv/bin/pkg-explorer-cli extract game.pkg sce_sys/icon0.png eboot.bin -o destination_folder
 .venv/bin/pkg-explorer-cli extract game.pkg -o destination_folder     # everything
+.venv/bin/pkg-explorer-cli verify game.pkg              # integrity check (--quick: skip game data)
 ```
 
 The language follows the system; to force one, set `PKG_EXPLORER_LANG=en` or `PKG_EXPLORER_LANG=pt`.
