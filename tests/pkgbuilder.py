@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Gera PKGs fake sintéticos para os testes (o caminho inverso de pkg_explorer/pkg.py).
+"""Generates synthetic fake PKGs for the tests (the reverse of pkg_explorer/pkg.py).
 
-O PKG gerado é criptografado como um PKG fake real: DK3 e EKPFS cifrados com RSA, IMAGE_KEY e
-entradas NP com AES-CBC, e o PFS com AES-XTS. Dentro do PFS há um sistema de arquivos com
-superbloco, inodes e diretórios, com blocos comprimidos (zlib) ou não.
+The generated PKG is encrypted like a real fake PKG: DK3 and EKPFS encrypted with RSA, IMAGE_KEY
+and NP entries with AES-CBC, and the PFS with AES-XTS. Inside the PFS there is a file system with
+a superblock, inodes and directories, with compressed (zlib) or uncompressed blocks.
+See docs/FORMAT.md.
 
-Nomes não são validados de propósito, para permitir montar PKGs maliciosos nos testes.
+Names are deliberately not validated, so that tests can build malicious PKGs.
 """
 
 from __future__ import annotations
@@ -24,12 +25,12 @@ from pkg_explorer import keys
 BLOCK = 0x10000
 SECTOR = 0x1000
 INODE_SIZE = 0xA8
-PFSC_OFFSET = 0x20000  # dentro da imagem PFS
+PFSC_OFFSET = 0x20000  # inside the PFS image
 RSA_E = 65537
 
 PFS_FILE, PFS_DIR, PFS_CUR, PFS_PARENT = 2, 3, 4, 5
 
-Tree = dict  # nome -> bytes (arquivo) ou Tree (pasta)
+Tree = dict  # name -> bytes (file) or Tree (folder)
 
 
 def _rsa_encrypt(data: bytes, modulus: int, rng) -> bytes:
@@ -86,7 +87,7 @@ class _Inode:
 @dataclass
 class _Fs:
     inodes: list[_Inode] = field(default_factory=list)
-    blocks: list[bytes] = field(default_factory=list)  # blocos internos (sem o superbloco)
+    blocks: list[bytes] = field(default_factory=list)  # inner blocks (without the superblock)
 
 
 def _dirent(ino: int, typ: int, name: bytes) -> bytes:
@@ -95,12 +96,12 @@ def _dirent(ino: int, typ: int, name: bytes) -> bytes:
 
 
 def _build_fs(tree: Tree) -> tuple[list[bytes], int, int]:
-    """Retorna (blocos internos a partir do 0, número de inodes, inode da superraiz)."""
-    # Inodes: 0 = reservado (ino 0 marca o fim de um diretório), 1 = superraiz,
-    # 2 = flat_path_table, 3 = uroot, depois o conteúdo.
+    """Returns (inner blocks starting at 0, number of inodes, superroot inode)."""
+    # Inodes: 0 = reserved (ino 0 marks the end of a directory), 1 = superroot,
+    # 2 = flat_path_table, 3 = uroot, then the content.
     inodes: list[_Inode] = [_Inode(0x8000), _Inode(0x4000 | 0o755), _Inode(0x8000 | 0o644), _Inode(0x4000 | 0o755)]
     files: list[tuple[int, bytes]] = [(2, b"flat path table")]
-    dirs: list[tuple[int, int, list[tuple[bytes, int, int]]]] = []  # (ino, parent, [(nome, ino, tipo)])
+    dirs: list[tuple[int, int, list[tuple[bytes, int, int]]]] = []  # (ino, parent, [(name, ino, type)])
 
     def walk(node: Tree, ino: int, parent: int) -> None:
         children = []
@@ -185,7 +186,7 @@ def build_pkg(
     compress: bool = True,
     seed: int = 0,
 ) -> dict[str, bytes]:
-    """Grava um PKG fake em `path`. Retorna as entradas em claro (nome -> dados) para conferência."""
+    """Writes a fake PKG to `path`. Returns the plaintext entries (name -> data) for checking."""
     import random
 
     rng = random.Random(seed)
@@ -198,7 +199,7 @@ def build_pkg(
     ekpfs = bytes(rng.randrange(256) for _ in range(32))
     pfs_seed = bytes(rng.randrange(256) for _ in range(16))
 
-    # Entradas: (id, dados em claro, cifrada como NP?)
+    # Entries: (id, plaintext data, encrypted as NP?)
     entries = [(0x0010, None, False), (0x0020, None, False)]
     if np_data:
         entries.append((0x0400, np_data, True))
@@ -213,7 +214,7 @@ def build_pkg(
         size = {0x0010: 32 + 7 * 32 + 7 * 256, 0x0020: 256}.get(entry_id, len(data or b""))
         pos = (pos + 15) & ~15
         layout.append((pos, size))
-        pos += size + (-size % 16)  # espaço para o último bloco AES das entradas NP
+        pos += size + (-size % 16)  # room for the last AES block of NP entries
     raws = [struct.pack(">6I8x", eid, 0, 0, 0, off, size) for (eid, _d, _n), (off, size) in zip(entries, layout)]
 
     payloads = []
@@ -231,7 +232,7 @@ def build_pkg(
         else:
             payloads.append(data)
 
-    # Imagem PFS: cabeçalho em claro (com a seed) + PFSC cifrado com AES-XTS.
+    # PFS image: plaintext header (with the seed) + PFSC encrypted with AES-XTS.
     digest = hmac.new(ekpfs, (1).to_bytes(4, "little") + pfs_seed, hashlib.sha256).digest()
     tweak_key, data_key = digest[:16], digest[16:32]
     inner, _count, _root = _build_fs(tree)
