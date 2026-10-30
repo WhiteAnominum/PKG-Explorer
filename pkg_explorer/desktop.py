@@ -104,7 +104,7 @@ def install(make_default: bool = True) -> list[Path]:
     for p in paths.values():
         p.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(DATA_DIR / "x-ps4-pkg.xml", paths["mime"])
-    shutil.copyfile(DATA_DIR / "pkg-explorer.svg", paths["mime_icon"])
+    shutil.copyfile(DATA_DIR / "pkg-file.svg", paths["mime_icon"])
     if "desktop" in paths:
         paths["desktop"].write_text(desktop_entry(), encoding="utf-8")
         shutil.copyfile(DATA_DIR / "pkg-explorer.svg", paths["app_icon"])
