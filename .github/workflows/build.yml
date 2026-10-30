@@ -1,0 +1,66 @@
+# Gera o AppImage e o Flatpak. Em tags v* (ex.: v0.1.0), publica os dois numa Release.
+# Também pode ser rodado à mão (aba Actions > Build > Run workflow), sem publicar nada.
+name: Build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    env:
+      # O appimagetool também é um AppImage; sem FUSE no runner, ele se extrai e roda.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build AppImage
+        run: ./packaging/appimage/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: dist/PKG-Explorer-x86_64.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse \
+            --force-clean --repo=repo build-dir \
+            packaging/flatpak/io.github.WhiteAnominum.PKGExplorer.yml
+          flatpak build-bundle repo PKG-Explorer.flatpak io.github.WhiteAnominum.PKGExplorer \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: PKG-Explorer.flatpak
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [appimage, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            PKG-Explorer-x86_64.AppImage
+            PKG-Explorer.flatpak
+          generate_release_notes: true
