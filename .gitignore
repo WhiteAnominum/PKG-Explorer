@@ -21,3 +21,8 @@ dist/
 
 # Pasta local de testes
 temp/
+
+# Flatpak (build local)
+.flatpak-builder/
+build-dir/
+*.flatpak
