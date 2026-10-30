@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""`python -m pkg_explorer [ARQUIVO.pkg]` abre a interface gráfica."""
+"""`python -m pkg_explorer [FILE.pkg]` opens the graphical interface."""
 
 import sys
 
