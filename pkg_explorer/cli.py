@@ -4,6 +4,7 @@
 import argparse
 import sys
 
+from .i18n import _
 from .pkg import Pkg, PkgError
 
 
@@ -16,14 +17,19 @@ def human_size(n: int) -> str:
 
 
 def cmd_info(pkg: Pkg, _args) -> None:
-    print(f"Título:      {pkg.title}")
-    print(f"Title ID:    {pkg.title_id}")
-    print(f"Content ID:  {pkg.content_id}")
-    print(f"Tipo:        {pkg.kind}  (categoria '{pkg.category}')")
-    print(f"Flags:       {', '.join(pkg.flags) or '-'}")
-    print(f"Versão:      {pkg.sfo.get('APP_VER') or pkg.sfo.get('VERSION', '-')}")
     files = [n for n in pkg.root.walk() if not n.is_dir]
-    print(f"Arquivos:    {len(files)}  ({human_size(sum(n.size for n in files))})")
+    rows = [
+        (_("Title:"), pkg.title),
+        ("Title ID:", pkg.title_id),
+        ("Content ID:", pkg.content_id),
+        (_("Type:"), f"{pkg.kind}  ({_('category')} '{pkg.category}')"),
+        ("Flags:", ", ".join(pkg.flags) or "-"),
+        (_("Version:"), pkg.sfo.get("APP_VER") or pkg.sfo.get("VERSION", "-")),
+        (_("Files:"), f"{len(files)}  ({human_size(sum(n.size for n in files))})"),
+    ]
+    width = max(len(label) for label, _value in rows) + 2
+    for label, value in rows:
+        print(f"{label:<{width}}{value}")
 
 
 def cmd_list(pkg: Pkg, _args) -> None:
@@ -41,23 +47,27 @@ def cmd_extract(pkg: Pkg, args) -> None:
     for path in paths:
         node = pkg.find(path)
         if node is None:
-            sys.exit(f"não encontrado no PKG: {path}")
+            sys.exit(_("not found in the PKG: {path}").format(path=path))
         out = pkg.extract(node, args.output)
-        print(f"extraído: {out}")
+        print(_("extracted: {path}").format(path=out))
 
 
 def main(argv=None) -> None:
-    parser = argparse.ArgumentParser(prog="pkg-explorer-cli", description="Explora PKGs de PS4")
+    parser = argparse.ArgumentParser(prog="pkg-explorer-cli", description=_("Browse PS4 PKGs"))
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("info", "list"):
-        p = sub.add_parser(name)
+    for name, help_text in (("info", _("show information about the PKG")),
+                            ("list", _("list the files in the PKG"))):
+        p = sub.add_parser(name, help=help_text)
         p.add_argument("pkg")
-    p = sub.add_parser("extract", help="extrai arquivos/pastas (ou tudo, se nenhum for dado)")
+    p = sub.add_parser("extract", help=_("extract files/folders (or everything, if none is given)"))
     p.add_argument("pkg")
-    p.add_argument("paths", nargs="*", help="caminhos dentro do PKG, ex.: sce_sys/icon0.png")
-    p.add_argument("-o", "--output", default=".", help="pasta de destino")
-    sub.add_parser("integrate", help="associa arquivos .pkg ao PKG Explorer e cria o atalho no menu")
-    sub.add_parser("unintegrate", help="desfaz o 'integrate'")
+    p.add_argument("paths", nargs="*", help=_("paths inside the PKG, e.g. sce_sys/icon0.png"))
+    p.add_argument("-o", "--output", default=".", help=_("destination folder"))
+    sub.add_parser(
+        "integrate",
+        help=_("make .pkg files open with PKG Explorer and add it to the applications menu"),
+    )
+    sub.add_parser("unintegrate", help=_("undo 'integrate'"))
     args = parser.parse_args(argv)
 
     if args.command in ("integrate", "unintegrate"):
@@ -65,17 +75,17 @@ def main(argv=None) -> None:
 
         if args.command == "integrate":
             desktop.install()
-            print(f"Pronto. Arquivos .pkg de PS4 agora abrem com: {desktop.describe_command()}")
+            print(_("Done. PS4 .pkg files now open with: {command}").format(command=desktop.describe_command()))
         else:
             removed = desktop.uninstall()
-            print("Integração removida." if removed else "Nada para remover.")
+            print(_("Integration removed.") if removed else _("Nothing to remove."))
         return
 
     try:
         with Pkg(args.pkg) as pkg:
             {"info": cmd_info, "list": cmd_list, "extract": cmd_extract}[args.command](pkg, args)
     except (PkgError, OSError) as exc:
-        sys.exit(f"erro: {exc}")
+        sys.exit(_("error: {error}").format(error=exc))
 
 
 if __name__ == "__main__":
