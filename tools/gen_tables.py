@@ -38,7 +38,7 @@ def parse_key_sets(source: str) -> dict[str, dict[str, bytes]]:
 
 def hex_lines(data: bytes) -> str:
     text = data.hex()
-    return "\n".join(f'    "{text[i:i + 64]}"' for i in range(0, len(text), 64))
+    return "\n".join(f'    "{text[i : i + 64]}"' for i in range(0, len(text), 64))
 
 
 def write_keys(shadps4: pathlib.Path) -> None:
