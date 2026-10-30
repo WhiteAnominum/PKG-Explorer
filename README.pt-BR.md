@@ -1,5 +1,7 @@
 # PKG Explorer
 
+[English](README.md) | **Português**
+
 Interface gráfica para navegar pelo conteúdo de arquivos `.pkg` de PS4 como se fossem um
 arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados.
 
@@ -12,6 +14,7 @@ arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados
 - Duplo clique abre o arquivo no programa padrão.
 - Filtro por nome.
 - Associação de arquivos: dê duplo clique num `.pkg` no gerenciador de arquivos para abri-lo.
+- Interface em português e inglês, escolhida pelo idioma do sistema.
 
 Funciona com os mesmos PKGs que o extrator do shadPS4 (PKGs "fake"/fpkg).
 
@@ -91,6 +94,8 @@ Linha de comando:
 .venv/bin/pkg-explorer-cli extract jogo.pkg sce_sys/icon0.png eboot.bin -o pasta_destino
 .venv/bin/pkg-explorer-cli extract jogo.pkg -o pasta_destino     # tudo
 ```
+
+O idioma segue o do sistema; para forçar um, use `PKG_EXPLORER_LANG=en` ou `PKG_EXPLORER_LANG=pt`.
 
 ### Abrir arquivos .pkg com duplo clique
 
