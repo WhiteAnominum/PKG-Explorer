@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Extraction in a worker thread with a progress dialog, and temporary folders."""
+"""Extraction in a worker thread with a progress dialog, and temporary folders.
+
+Threading design: the worker is a plain Python thread that never touches Qt. It only updates
+an `ExtractionState` (plain numbers and strings). The GUI thread polls that state with a QTimer
+and updates the dialog. Every Qt object is created, used and destroyed in the GUI thread, so
+the cross-thread Qt mistakes that caused random crashes before cannot happen here.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +15,13 @@ import tempfile
 import threading
 
 import shiboken6
-from PySide6.QtCore import QEventLoop, QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QEventLoop, Qt, QTimer
 from PySide6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
 from ..i18n import _
 from ..pkg import ExtractionCancelled, Node, Pkg
+
+POLL_INTERVAL_MS = 100
 
 _temp_dirs: list[str] = []
 
@@ -30,75 +38,38 @@ def make_temp_dir() -> str:
     return d
 
 
-class ExtractWorker(QObject):
-    progress = Signal(int)  # per mille (0..1000)
-    current = Signal(str)
-    done = Signal(bool, str)  # success, error message
+class ExtractionState:
+    """Shared between the worker thread (writes) and the GUI thread (reads). Plain Python values
+    only: single attribute reads and writes are atomic in Python, so no lock is needed."""
 
-    def __init__(self, pkg: Pkg, jobs: list[tuple[Node, str]], cancel: threading.Event):
-        super().__init__()
-        self.pkg = pkg
-        self.jobs = jobs
-        self.cancel = cancel
-        self.total = max(1, sum(node.total_size() for node, _ in jobs))
-        self._written = 0
-        self._last_progress = -1
+    def __init__(self, total: int):
+        self.total = max(1, total)
+        self.written = 0
+        self.current = ""
+        self.finished = False
+        self.ok = False
+        self.error = ""
 
-    def _on_chunk(self, n: int) -> None:
-        self._written += n
-        # Only when the value changes: at most 1000 signals instead of one per 64 KB block.
-        progress = int(self._written * 1000 / self.total)
-        if progress != self._last_progress:
-            self._last_progress = progress
-            self.progress.emit(progress)
-
-    def run(self) -> None:
-        try:
-            for node, dest in self.jobs:
-                self.current.emit(node.path or _("(everything)"))
-                self.pkg.extract(node, dest, self._on_chunk, self.cancel)
-        except ExtractionCancelled:
-            self.done.emit(False, "")
-        except Exception as exc:  # noqa: BLE001 - any error is shown to the user
-            self.done.emit(False, str(exc))
-        else:
-            self.done.emit(True, "")
+    def add(self, n: int) -> None:
+        self.written += n
 
 
-class _DialogBridge(QObject):
-    """Lives in the GUI thread. The worker's signals are connected to these slots, so Qt
-    delivers them through the GUI thread's event queue and the dialog is only ever touched
-    from the GUI thread (widgets must not be used from other threads)."""
-
-    def __init__(self, dialog: QProgressDialog, thread: QThread, result: dict):
-        super().__init__()
-        self._dialog = dialog
-        self._thread = thread
-        self._result = result
-
-    @Slot(int)
-    def show_progress(self, per_mille: int) -> None:
-        self._dialog.setValue(per_mille)
-
-    @Slot(str)
-    def show_current(self, path: str) -> None:
-        self._dialog.setLabelText(_("Extracting:\n{path}").format(path=path))
-
-    @Slot(bool, str)
-    def finish(self, ok: bool, error: str) -> None:
-        self._result["ok"], self._result["error"] = ok, error
-        self._thread.quit()
-
-
-def _destroy_now(*objects: QObject) -> None:
-    """Destroys the Qt objects of one extraction right away, in the GUI thread.
-
-    Left alone they would linger (a closed dialog is only hidden, and stays a child of the window)
-    until Python's garbage collector frees them, and the collector runs in whichever thread
-    happens to trigger it, possibly the next extraction's worker thread. Destroying Qt objects
-    from a thread they do not belong to crashes at random."""
-    for obj in objects:
-        shiboken6.delete(obj)
+def extract_jobs(
+    pkg: Pkg, jobs: list[tuple[Node, str]], cancel: threading.Event, state: ExtractionState
+) -> None:
+    """Runs in the worker thread. Must not use any Qt object."""
+    try:
+        for node, dest in jobs:
+            state.current = node.path or _("(everything)")
+            pkg.extract(node, dest, state.add, cancel)
+    except ExtractionCancelled:
+        pass
+    except Exception as exc:  # noqa: BLE001 - any error is shown to the user
+        state.error = str(exc)
+    else:
+        state.ok = True
+    finally:
+        state.finished = True
 
 
 def run_extraction(
@@ -111,9 +82,11 @@ def run_extraction(
 
     Blocks (running a local event loop) until the worker thread has really finished, so `pkg`
     is never used by the worker after this returns. Setting `cancel` stops the extraction."""
-    worker = ExtractWorker(pkg, jobs, cancel or threading.Event())
-    thread = QThread()  # no parent: destroyed explicitly below
-    worker.moveToThread(thread)
+    cancel = cancel or threading.Event()
+    state = ExtractionState(sum(node.total_size() for node, _dest in jobs))
+    worker = threading.Thread(
+        target=extract_jobs, args=(pkg, jobs, cancel, state), name="pkg-explorer-extract"
+    )
 
     dialog = QProgressDialog(_("Extracting…"), _("Cancel"), 0, 1000, parent)
     dialog.setWindowTitle(_("Extracting"))
@@ -122,24 +95,41 @@ def run_extraction(
     dialog.setMinimumWidth(480)
     dialog.setAutoClose(False)
     dialog.setAutoReset(False)
-    dialog.canceled.connect(worker.cancel.set)
+    dialog.canceled.connect(cancel.set)
 
-    result: dict = {}
     loop = QEventLoop()
-    bridge = _DialogBridge(dialog, thread, result)
+    timer = QTimer()
+    timer.setInterval(POLL_INTERVAL_MS)
+    shown = {"current": None, "busy": False}
 
-    # Receivers are QObjects in the GUI thread, so these connections are queued.
-    worker.progress.connect(bridge.show_progress)
-    worker.current.connect(bridge.show_current)
-    worker.done.connect(bridge.finish)
-    thread.started.connect(worker.run)
-    thread.finished.connect(loop.quit)
-    thread.start()
+    def poll() -> None:
+        # setValue() of a visible modal dialog processes events, which can fire the timer again
+        # while we are still in here: ignore those nested calls.
+        if shown["busy"]:
+            return
+        shown["busy"] = True
+        try:
+            if state.current != shown["current"]:
+                shown["current"] = state.current
+                dialog.setLabelText(_("Extracting:\n{path}").format(path=state.current))
+            dialog.setValue(min(1000, state.written * 1000 // state.total))
+            if state.finished:
+                timer.stop()
+                loop.quit()
+        finally:
+            shown["busy"] = False
+
+    timer.timeout.connect(poll)
+    worker.start()
+    timer.start()
     loop.exec()
-    thread.wait()
+    worker.join()
     dialog.close()
-    _destroy_now(worker, thread, bridge, loop, dialog)
+    # Destroy the Qt objects now, in the GUI thread, instead of leaving them to the garbage
+    # collector (a closed dialog would otherwise stay alive as a hidden child of the window).
+    for obj in (timer, loop, dialog):
+        shiboken6.delete(obj)
 
-    if result.get("error"):
-        QMessageBox.critical(parent, _("Extraction error"), result["error"])
-    return bool(result.get("ok"))
+    if state.error:
+        QMessageBox.critical(parent, _("Extraction error"), state.error)
+    return state.ok
