@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Integração com o desktop Linux (só para o usuário atual, em ~/.local/share):
-tipo MIME application/x-ps4-pkg, atalho no menu, ícone e associação de arquivos .pkg."""
+tipo MIME application/x-ps4-pkg, atalho no menu, ícone e associação de arquivos .pkg.
+
+No Flatpak o atalho e o tipo MIME já são exportados pelo próprio Flatpak, mas ele remove a
+detecção pela assinatura do arquivo (<magic>) e rebaixa a prioridade do *.pkg, para que apps não
+possam tomar extensões de outros tipos. Como .pkg já é application/x-xar (instalador do macOS),
+o sistema continuaria abrindo no programa errado. Por isso, também no Flatpak, instalamos o tipo
+MIME completo na pasta do usuário (o atalho continua sendo o exportado pelo Flatpak)."""
 
 from __future__ import annotations
 
@@ -16,19 +22,28 @@ MIME_TYPE = "application/x-ps4-pkg"
 DATA_DIR = Path(__file__).parent / "data"
 
 
+def in_flatpak() -> bool:
+    return "FLATPAK_ID" in os.environ
+
+
 def _data_home() -> Path:
+    if in_flatpak():
+        # Dentro do Flatpak, XDG_DATA_HOME aponta para ~/.var/app/<id>; queremos a do sistema.
+        return Path(os.environ.get("HOST_XDG_DATA_HOME") or Path.home() / ".local" / "share")
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
 
 
 def _paths() -> dict[str, Path]:
     data = _data_home()
     icons = data / "icons" / "hicolor" / "scalable"
-    return {
-        "desktop": data / "applications" / f"{APP_ID}.desktop",
+    paths = {
         "mime": data / "mime" / "packages" / f"{APP_ID}.xml",
-        "app_icon": icons / "apps" / f"{APP_ID}.svg",
         "mime_icon": icons / "mimetypes" / f"{MIME_TYPE.replace('/', '-')}.svg",
     }
+    if not in_flatpak():  # no Flatpak, atalho e ícone do app vêm do próprio pacote
+        paths["desktop"] = data / "applications" / f"{APP_ID}.desktop"
+        paths["app_icon"] = icons / "apps" / f"{APP_ID}.svg"
+    return paths
 
 
 def _desktop_quote(arg: str) -> str:
@@ -88,12 +103,13 @@ def install(make_default: bool = True) -> list[Path]:
     paths = _paths()
     for p in paths.values():
         p.parent.mkdir(parents=True, exist_ok=True)
-    paths["desktop"].write_text(desktop_entry(), encoding="utf-8")
     shutil.copyfile(DATA_DIR / "x-ps4-pkg.xml", paths["mime"])
-    shutil.copyfile(DATA_DIR / "pkg-explorer.svg", paths["app_icon"])
     shutil.copyfile(DATA_DIR / "pkg-explorer.svg", paths["mime_icon"])
+    if "desktop" in paths:
+        paths["desktop"].write_text(desktop_entry(), encoding="utf-8")
+        shutil.copyfile(DATA_DIR / "pkg-explorer.svg", paths["app_icon"])
     _refresh()
-    if make_default:
+    if make_default and not in_flatpak():
         _run("xdg-mime", "default", f"{APP_ID}.desktop", MIME_TYPE)
     return list(paths.values())
 
@@ -109,12 +125,16 @@ def uninstall() -> list[Path]:
 
 
 def is_installed() -> bool:
-    return _paths()["desktop"].exists()
+    return all(p.exists() for key, p in _paths().items() if key in ("mime", "desktop"))
 
 
 def is_supported() -> bool:
-    """No Flatpak a integração vem do próprio pacote; fora do Linux não se aplica."""
-    return sys.platform.startswith("linux") and "FLATPAK_ID" not in os.environ
+    return sys.platform.startswith("linux")
+
+
+def should_ask_on_first_run() -> bool:
+    """AppImage e Flatpak não têm um passo de instalação que associe os .pkg sozinho."""
+    return is_supported() and (is_appimage() or in_flatpak()) and not is_installed()
 
 
 def is_appimage() -> bool:
@@ -140,7 +160,7 @@ def repair_if_moved() -> bool:
     """Se a integração está instalada mas aponta para um programa que não existe mais (pasta
     movida, AppImage apagado) ou para um AppImage antigo enquanto rodamos de um AppImage
     (atualização), aponta de novo para esta instalação. Retorna True se corrigiu."""
-    if not is_supported() or not is_installed():
+    if not is_supported() or in_flatpak() or not is_installed():
         return False
     installed = _installed_program()
     current = launch_command()[0]
