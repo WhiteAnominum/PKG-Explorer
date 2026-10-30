@@ -29,3 +29,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: pytest -v
+      - name: GUI stress (repeat to catch races)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: for i in $(seq 10); do pytest -q tests/test_gui.py tests/test_threads.py || exit 1; done
