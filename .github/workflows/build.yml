@@ -1,5 +1,5 @@
-# Gera o AppImage e o Flatpak. Em tags v* (ex.: v0.1.0), publica os dois numa Release.
-# Também pode ser rodado à mão (aba Actions > Build > Run workflow), sem publicar nada.
+# Builds the AppImage and the Flatpak. On v* tags (e.g. v1.2), publishes both in a Release.
+# Can also be run by hand (Actions tab > Build > Run workflow) without publishing anything.
 name: Build
 
 on:
@@ -7,8 +7,8 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-# Só leitura por padrão; a etapa que publica a Release pede escrita.
-# Ações de terceiros fixadas pelo hash do commit (a versão fica no comentário).
+# Read-only by default; the job that publishes the Release asks for write access.
+# Third-party actions are pinned by commit hash (the version is in the comment).
 permissions:
   contents: read
 
@@ -20,7 +20,7 @@ jobs:
     needs: tests
     runs-on: ubuntu-24.04
     env:
-      # O appimagetool também é um AppImage; sem FUSE no runner, ele se extrai e roda.
+      # appimagetool is itself an AppImage; without FUSE on the runner it extracts itself and runs.
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
