@@ -34,17 +34,22 @@ class ExtractWorker(QObject):
     current = Signal(str)
     done = Signal(bool, str)  # success, error message
 
-    def __init__(self, pkg: Pkg, jobs: list[tuple[Node, str]]):
+    def __init__(self, pkg: Pkg, jobs: list[tuple[Node, str]], cancel: threading.Event):
         super().__init__()
         self.pkg = pkg
         self.jobs = jobs
-        self.cancel = threading.Event()
+        self.cancel = cancel
         self.total = max(1, sum(node.total_size() for node, _ in jobs))
         self._written = 0
+        self._last_progress = -1
 
     def _on_chunk(self, n: int) -> None:
         self._written += n
-        self.progress.emit(int(self._written * 1000 / self.total))
+        # Only when the value changes: at most 1000 signals instead of one per 64 KB block.
+        progress = int(self._written * 1000 / self.total)
+        if progress != self._last_progress:
+            self._last_progress = progress
+            self.progress.emit(progress)
 
     def run(self) -> None:
         try:
@@ -84,10 +89,18 @@ class _DialogBridge(QObject):
         self._thread.quit()
 
 
-def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> bool:
-    """Extracts in another thread while showing a progress dialog. Returns True if it finished."""
-    worker = ExtractWorker(pkg, jobs)
-    thread = QThread(parent)
+def run_extraction(
+    parent: QWidget,
+    pkg: Pkg,
+    jobs: list[tuple[Node, str]],
+    cancel: threading.Event | None = None,
+) -> bool:
+    """Extracts in another thread while showing a progress dialog. Returns True if it finished.
+
+    Blocks (running a local event loop) until the worker thread has really finished, so `pkg`
+    is never used by the worker after this returns. Setting `cancel` stops the extraction."""
+    worker = ExtractWorker(pkg, jobs, cancel or threading.Event())
+    thread = QThread()  # no parent: it is a local object, released after wait() below
     worker.moveToThread(thread)
 
     dialog = QProgressDialog(_("Extracting…"), _("Cancel"), 0, 1000, parent)
