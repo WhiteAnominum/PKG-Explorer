@@ -42,9 +42,17 @@ Baixe o `PKG-Explorer.flatpak` na página de
 flatpak install --user PKG-Explorer.flatpak
 ```
 
-No Flatpak a associação de arquivos `.pkg` é feita automaticamente na instalação. O programa
-pede acesso aos arquivos do computador (`--filesystem=host`) para ler PKGs em qualquer disco e
-extrair na pasta onde você soltar os arquivos ao arrastar.
+Na primeira vez, ele pergunta se arquivos `.pkg` devem abrir com o PKG Explorer (veja abaixo por
+que isso não é automático). O programa pede acesso aos arquivos do computador
+(`--filesystem=host`) para ler PKGs em qualquer disco, extrair na pasta onde você soltar os
+arquivos ao arrastar e registrar o tipo de arquivo `.pkg` de PS4.
+
+> **Por que a associação não é automática no Flatpak?** O Flatpak exporta o tipo de arquivo
+> declarado pelo app, mas remove a detecção pela assinatura do arquivo e rebaixa a prioridade da
+> extensão, para que um app não possa tomar extensões de outros tipos. Como `.pkg` já é usado por
+> instaladores do macOS, o sistema continuaria abrindo os PKGs de PS4 no programa errado (o Ark,
+> no KDE). Ao aceitar a pergunta, o PKG Explorer instala o tipo de arquivo completo em
+> `~/.local/share/mime`.
 
 Para gerar a partir do código (requer `org.flatpak.Builder`):
 
