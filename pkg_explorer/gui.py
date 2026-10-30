@@ -59,6 +59,10 @@ from .pkg import ExtractionCancelled, Node, Pkg, PkgError
 # acima deste tamanho pedimos confirmação.
 LARGE_TEMP_EXTRACT = 512 * 1024 * 1024
 
+# KDE: quanto tempo depois de terminar o arrasto ainda aceitamos o pedido de extração do
+# destino (a chamada D-Bus pode chegar logo após o fim do arrasto).
+DND_GRACE_MS = 10_000
+
 KIND_LABELS = {"game": _("Game"), "patch": _("Update"), "dlc": "DLC"}
 
 _temp_dirs: list[str] = []
@@ -299,6 +303,11 @@ class PkgTreeView(QTreeView):
         if icon is not None:
             drag.setPixmap(icon.pixmap(32, 32))
         drag.exec(Qt.CopyAction)
+        if window.kde_dnd is not None:
+            # Se ninguém pedir a extração (arrasto cancelado ou solto num lugar sem suporte),
+            # esquece os itens para que outro programa não possa pedir depois.
+            pending = window.dragged_nodes
+            QTimer.singleShot(DND_GRACE_MS, lambda: window.forget_drag(pending))
 
 
 # ---------------------------------------------------------------------------- janela
@@ -562,6 +571,10 @@ class MainWindow(QMainWindow):
         if run_extraction(self, self.pkg, [(self.pkg.root, target)]):
             self.statusBar().showMessage(_("Extracted to {path}").format(path=target), 8000)
             QDesktopServices.openUrl(QUrl.fromLocalFile(target))
+
+    def forget_drag(self, nodes: list[Node]) -> None:
+        if self.dragged_nodes is nodes:
+            self.dragged_nodes = []
 
     def extract_dropped(self, dest: str) -> None:
         """Chamado (via D-Bus) quando os itens arrastados são soltos numa pasta no KDE."""
