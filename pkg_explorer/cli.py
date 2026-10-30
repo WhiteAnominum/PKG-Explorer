@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Linha de comando: pkg-explorer-cli info|list|extract ARQUIVO.pkg ..."""
+"""Command line: pkg-explorer-cli info|list|extract FILE.pkg ..."""
 
 import argparse
 import sys
