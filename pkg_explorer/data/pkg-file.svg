@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e6ecf5"/>
+    </linearGradient>
+  </defs>
+  <!-- folha com o canto dobrado -->
+  <path d="M24 8 H80 L104 32 V120 H24 Z" fill="url(#page)" stroke="#9aa9bf" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M80 8 V32 H104 Z" fill="#c9d4e4" stroke="#9aa9bf" stroke-width="2" stroke-linejoin="round"/>
+  <!-- caixa (pacote) -->
+  <path d="M64 36 L86 46 L86 72 L64 82 L42 72 L42 46 Z" fill="#f4c26b"/>
+  <path d="M64 36 L86 46 L64 56 L42 46 Z" fill="#fbdc9c"/>
+  <path d="M64 56 L86 46 L86 72 L64 82 Z" fill="#d99a3c"/>
+  <path d="M53 41 L75 51 L75 57 L71 59 L71 53 L49 43 Z" fill="#fff3d6" opacity="0.85"/>
+  <!-- etiqueta -->
+  <rect x="34" y="92" width="60" height="20" rx="5" fill="#2a63c4"/>
+  <text x="64" y="107" font-family="sans-serif" font-size="15" font-weight="bold" fill="#ffffff" text-anchor="middle">PKG</text>
+</svg>
