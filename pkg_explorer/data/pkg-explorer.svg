@@ -10,12 +10,12 @@
     </linearGradient>
   </defs>
   <rect x="8" y="8" width="112" height="112" rx="22" fill="url(#bg)"/>
-  <!-- caixa (pacote) -->
+  <!-- box (package) -->
   <path d="M64 26 L98 42 L98 82 L64 98 L30 82 L30 42 Z" fill="#f4c26b"/>
   <path d="M64 26 L98 42 L64 58 L30 42 Z" fill="#fbdc9c"/>
   <path d="M64 58 L98 42 L98 82 L64 98 Z" fill="#d99a3c"/>
   <path d="M47 34 L81 50 L81 60 L74 63 L74 54 L40 38 Z" fill="#fff3d6" opacity="0.85"/>
-  <!-- lupa -->
+  <!-- magnifying glass -->
   <circle cx="84" cy="84" r="17" fill="url(#lens)" stroke="#ffffff" stroke-width="6"/>
   <path d="M96 96 L110 110" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
 </svg>
