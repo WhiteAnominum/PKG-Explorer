@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Arrastar e soltar com extração direta no destino, no KDE.
+"""Drag and drop with extraction straight into the drop target, on KDE.
 
-Usa o mesmo protocolo do Ark: o arrasto leva só o endereço D-Bus deste programa
-(application/x-kde-ark-dndextract-service / -path). Quando o usuário solta numa pasta do
-Dolphin, da área de trabalho do Plasma ou de outro programa que usa o KIO, o KIO chama
-org.kde.ark.DndExtract.extractSelectedFilesTo(pasta) aqui, e extraímos direto nessa pasta.
+Uses the same protocol as Ark: the drag carries only this program's D-Bus address
+(application/x-kde-ark-dndextract-service / -path). When the user drops onto a folder in
+Dolphin, the Plasma desktop or any other KIO-based program, KIO calls
+org.kde.ark.DndExtract.extractSelectedFilesTo(folder) here, and we extract into that folder.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ OBJECT_PATH = f"/DndExtract/{os.getpid()}"
 
 
 def is_available() -> bool:
-    if os.environ.get("PKG_EXPLORER_DND") == "temp":  # força o modo antigo (para testes)
+    if os.environ.get("PKG_EXPLORER_DND") == "temp":  # forces the temporary-folder mode (for testing)
         return False
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper().split(":")
     return "KDE" in desktop and QDBusConnection.sessionBus().isConnected()
@@ -29,7 +29,7 @@ def is_available() -> bool:
 
 @ClassInfo({"D-Bus Interface": "org.kde.ark.DndExtract"})
 class DndExtractService(QObject):
-    """Recebe do KIO a pasta onde os itens foram soltos e repassa para `on_drop`."""
+    """Receives from KIO the folder where the items were dropped and passes it to `on_drop`."""
 
     def __init__(self, on_drop: Callable[[str], None], parent: QObject | None = None):
         super().__init__(parent)
@@ -46,8 +46,8 @@ class DndExtractService(QObject):
 
     @Slot(str)
     def extractSelectedFilesTo(self, destination: str) -> None:
-        # O KIO espera esta chamada D-Bus terminar antes de liberar o Dolphin, então só
-        # agendamos a extração e retornamos na hora.
+        # KIO waits for this D-Bus call to return before releasing Dolphin, so we only
+        # schedule the extraction and return right away.
         if "://" in destination:
             url = QUrl(destination)
             destination = url.toLocalFile() if url.isLocalFile() else destination
