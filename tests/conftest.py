@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import os
 
-# Mensagens em inglês nos testes, qualquer que seja o idioma da máquina (antes de importar o app).
+# English messages in the tests, whatever the machine's language (set before importing the app).
 os.environ["PKG_EXPLORER_LANG"] = "en"
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -18,9 +18,9 @@ def sample_tree(seed: int = 1) -> dict:
         "eboot.bin": b"\x7fELF" + bytes(rng.randrange(256) for _ in range(5000)),
         "version.xml": b"<version>1.0</version>",
         "data": {
-            # vários blocos, metade compressível, metade aleatória
+            # several blocks, half compressible, half random
             "big.bin": b"A" * 100_000 + bytes(rng.randrange(256) for _ in range(150_000)),
-            "exact.bin": b"B" * 0x10000,  # exatamente um bloco
+            "exact.bin": b"B" * 0x10000,  # exactly one block
             "empty.txt": b"",
             "sub": {"deep": {"x.txt": b"hello"}},
         },
@@ -30,7 +30,7 @@ def sample_tree(seed: int = 1) -> dict:
 
 @pytest.fixture
 def make_pkg(tmp_path):
-    """Fábrica: make_pkg(tree, **opções) -> (caminho, entradas em claro)."""
+    """Factory: make_pkg(tree, **options) -> (path, plaintext entries)."""
     counter = iter(range(1000))
 
     def make(tree=None, **kwargs):
