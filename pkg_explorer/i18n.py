@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Tradução da interface. Os textos no código estão em inglês; aqui fica o português.
+"""Interface translation. Texts in the code are written in English; Portuguese lives here.
 
-O idioma vem do sistema (LANGUAGE, LC_ALL, LC_MESSAGES, LANG): português para pt_*, inglês
-para o resto. PKG_EXPLORER_LANG=en|pt força um idioma.
+The language comes from the system (LANGUAGE, LC_ALL, LC_MESSAGES, LANG): Portuguese for pt_*,
+English for everything else. PKG_EXPLORER_LANG=en|pt forces a language.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def _system_language() -> str:
 LANGUAGE = "pt" if _system_language().lower().startswith("pt") else "en"
 
 PT = {
-    # Leitor de PKG
+    # PKG reader
     "read beyond end of file (offset 0x{offset:X}, size 0x{size:X})":
         "leitura fora do arquivo (offset 0x{offset:X}, tamanho 0x{size:X})",
     "this does not look like a valid PKG file": "não parece ser um arquivo PKG válido",
@@ -44,7 +44,7 @@ PT = {
     "invalid file name in the PKG: {name!r}": "nome de arquivo inválido no PKG: {name!r}",
     "refusing to write outside the destination folder: {path}":
         "gravação fora da pasta de destino recusada: {path}",
-    # Linha de comando
+    # Command line
     "Browse PS4 PKGs": "Explora PKGs de PS4",
     "show information about the PKG": "mostra informações do PKG",
     "list the files in the PKG": "lista os arquivos do PKG",
@@ -67,7 +67,7 @@ PT = {
     "category": "categoria",
     "Version:": "Versão:",
     "Files:": "Arquivos:",
-    # Interface gráfica
+    # Graphical interface
     "Name": "Nome",
     "Size": "Tamanho",
     "Type": "Tipo",
