@@ -161,7 +161,7 @@ def test_many_extractions_in_a_row(window, make_pkg, tmp_path):
     from pkg_explorer.gui import extraction
 
     assert not window.findChildren(extraction.QProgressDialog)
-    assert not [t for t in threading.enumerate() if t.name == "pkg-explorer-extract"]
+    assert not [t for t in threading.enumerate() if t.name == "pkg-explorer-worker"]
 
 
 def test_closing_during_extraction_cancels_waits_and_closes(
@@ -251,3 +251,22 @@ def test_install_in_shadps4(window, make_pkg, tmp_path, monkeypatch):
     window.install_shadps4()
     assert (games / "TEST00001-patch" / "eboot.bin").is_file()
     assert "already exists" in shown[-1] and "not found" not in shown[-1]
+
+
+def test_integrity_warning_and_full_check(window, make_pkg, monkeypatch):
+    path, _ = make_pkg()
+    window.open_pkg(path)
+    assert "Damaged" not in window.info_label.text()
+    messages = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: messages.append(a[2]))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a: messages.append(a[2]))
+    window.verify_full()
+    assert "intact" in messages[-1]
+
+    with open(path, "r+b") as f:  # damage the header: the quick check on open catches it
+        f.seek(0x500)
+        f.write(b"\xff")
+    window.open_pkg(path)
+    assert "Damaged PKG: header" in window.info_label.text()
+    window.verify_full()
+    assert "damaged" in messages[-1] and "header" in messages[-1]
