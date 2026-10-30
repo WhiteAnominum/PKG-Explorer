@@ -7,6 +7,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Só leitura por padrão; a etapa que publica a Release pede escrita.
+# Ações de terceiros fixadas pelo hash do commit (a versão fica no comentário).
+permissions:
+  contents: read
+
 jobs:
   appimage:
     runs-on: ubuntu-24.04
@@ -14,13 +19,13 @@ jobs:
       # O appimagetool também é um AppImage; sem FUSE no runner, ele se extrai e roda.
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - name: Build AppImage
         run: ./packaging/appimage/build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: appimage
           path: dist/PKG-Explorer-x86_64.AppImage
@@ -29,7 +34,7 @@ jobs:
   flatpak:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install flatpak-builder
         run: |
           sudo apt-get update
@@ -42,7 +47,7 @@ jobs:
             packaging/flatpak/io.github.WhiteAnominum.PKGExplorer.yml
           flatpak build-bundle repo PKG-Explorer.flatpak io.github.WhiteAnominum.PKGExplorer \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: flatpak
           path: PKG-Explorer.flatpak
@@ -55,12 +60,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - name: Checksums
+        run: sha256sum PKG-Explorer-x86_64.AppImage PKG-Explorer.flatpak > SHA256SUMS
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
             PKG-Explorer-x86_64.AppImage
             PKG-Explorer.flatpak
+            SHA256SUMS
           generate_release_notes: true
