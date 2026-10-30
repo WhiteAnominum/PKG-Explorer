@@ -8,13 +8,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import struct
 import threading
 import zlib
 from collections import OrderedDict
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Callable, Iterator
 
 from . import crypto
 from .entry_names import ENTRY_NAMES
@@ -87,7 +88,9 @@ def _safe_target(dest_dir: str, name: str) -> str:
     target = os.path.join(dest_dir, check_name(name))
     base = os.path.realpath(dest_dir)
     if os.path.commonpath([base, os.path.realpath(target)]) != base:
-        raise PkgError(_("refusing to write outside the destination folder: {path}").format(path=target))
+        raise PkgError(
+            _("refusing to write outside the destination folder: {path}").format(path=target)
+        )
     return target
 
 
@@ -142,7 +145,7 @@ class Node:
 class Pkg:
     def __init__(self, path: str | os.PathLike):
         self.path = os.fspath(path)
-        self._file = open(self.path, "rb")
+        self._file = open(self.path, "rb")  # noqa: SIM115 - kept open until close()
         self._lock = threading.Lock()
         self._block_cache: OrderedDict[int, bytes] = OrderedDict()
         try:
@@ -196,7 +199,9 @@ class Pkg:
         self.file_size = os.path.getsize(self.path)
         self.entry_count = struct.unpack_from(">I", header, 0x10)[0]  # entry count
         self.entry_table_offset = struct.unpack_from(">I", header, 0x18)[0]  # entry table offset
-        content_offset, content_size = struct.unpack_from(">QQ", header, 0x30)  # content offset/size
+        content_offset, content_size = struct.unpack_from(
+            ">QQ", header, 0x30
+        )  # content offset/size
         self.content_id = header[0x40:0x64].rstrip(b"\x00").decode("ascii", "replace")
         self.title_id = header[0x47:0x50].decode("ascii", "replace")  # content ID chars 7..15
         self.content_flags = struct.unpack_from(">I", header, 0x78)[0]  # content flags
@@ -259,7 +264,8 @@ class Pkg:
 
     @property
     def output_folder_name(self) -> str:
-        """Folder used by the original extractor / shadPS4: TITLEID, TITLEID-patch or TITLEID/DLC."""
+        """Folder used by the original extractor / shadPS4: TITLEID, TITLEID-patch or
+        TITLEID/DLC."""
         if self.kind == "patch":
             return f"{self.title_id}-patch"
         if self.kind == "dlc":
@@ -340,7 +346,11 @@ class Pkg:
             raise _corrupt(f"unexpected PFS block size 0x{self._block_size:X}")
         num_blocks = data_length // self._block_size
         available = self.pfs_image_size - self._pfsc_offset  # bytes of the PFSC image in the file
-        if not 0 < num_blocks or block_offsets < 0 or block_offsets + (num_blocks + 1) * 8 > available:
+        if (
+            not num_blocks > 0
+            or block_offsets < 0
+            or block_offsets + (num_blocks + 1) * 8 > available
+        ):
             raise _corrupt("invalid PFSC block table")
         sector_map = self._read_pfs(self._pfsc_offset + block_offsets, (num_blocks + 1) * 8)
         self._sector_map = struct.unpack(f"<{num_blocks + 1}Q", sector_map)
@@ -409,8 +419,12 @@ class Pkg:
             for p in range(0, per_block * INODE_SIZE, INODE_SIZE):
                 if len(inodes) == inode_count:
                     break
-                mode, _nlink, flags, size = struct.unpack_from("<HHIq", data, p)  # mode, flags, size
-                blocks, loc = struct.unpack_from("<II", data, p + 0x60)  # number of blocks, first block
+                mode, _nlink, flags, size = struct.unpack_from(
+                    "<HHIq", data, p
+                )  # mode, flags, size
+                blocks, loc = struct.unpack_from(
+                    "<II", data, p + 0x60
+                )  # number of blocks, first block
                 inodes.append(Inode(mode, flags, size, blocks, loc))
             block += 1
         return inodes
@@ -441,7 +455,9 @@ class Pkg:
         root = Node("", True)
 
         superroot = self._read_dir(self._inodes[self._superroot_ino])
-        uroot = next((ino for name, ino, typ in superroot if name == "uroot" and typ == PFS_DIR), None)
+        uroot = next(
+            (ino for name, ino, typ in superroot if name == "uroot" and typ == PFS_DIR), None
+        )
         if uroot is None:
             raise PkgError(_("'uroot' directory not found in the PFS"))
 
@@ -531,8 +547,16 @@ class Pkg:
 
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
         # O_NOFOLLOW: do not write through a symbolic link already present in the destination.
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
-        out = os.fdopen(os.open(target, flags, 0o644), "wb")  # outside the try: if it fails, there is nothing to delete
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_TRUNC
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_BINARY", 0)
+        )
+        out = os.fdopen(
+            os.open(target, flags, 0o644), "wb"
+        )  # outside the try: if it fails, there is nothing to delete
         try:
             with out:
                 for chunk in self.iter_file(node):
@@ -543,10 +567,8 @@ class Pkg:
                         progress(len(chunk))
         except BaseException:
             # Do not leave a half-written file behind.
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(target)
-            except OSError:
-                pass
             raise
         return target
 
