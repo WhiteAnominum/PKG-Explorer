@@ -9,8 +9,10 @@ arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados
 
 - Abre o PKG em menos de um segundo, mesmo com dezenas de GB: só a estrutura é lida.
 - Mostra o ícone, título, Title ID, tipo (jogo base, atualização ou DLC) e versão.
-- Extraia arquivos ou pastas selecionados, ou o pacote inteiro (na mesma estrutura de pastas
-  usada pelo shadPS4: `CUSA00000`, `CUSA00000-patch`, `CUSA00000/<DLC>`).
+- Extraia arquivos ou pastas selecionados, ou o pacote inteiro (com os mesmos nomes de pasta do
+  extrator do shadPS4: `CUSA00000`, `CUSA00000-patch`, `CUSA00000/<DLC>`).
+- **Instalar no shadPS4**: coloca jogo, atualização ou DLC direto na pasta certa do shadPS4
+  (veja [Instalar no shadPS4](#instalar-no-shadps4)).
 - Arraste arquivos e pastas da janela para o gerenciador de arquivos, como num zip
   (veja [KDE Plasma e outros ambientes](#kde-plasma-e-outros-ambientes)).
 - Duplo clique abre o arquivo no programa padrão.
@@ -98,6 +100,21 @@ Linha de comando:
 ```
 
 O idioma segue o do sistema; para forçar um, use `PKG_EXPLORER_LANG=en` ou `PKG_EXPLORER_LANG=pt`.
+
+### Instalar no shadPS4
+
+**Instalar no shadPS4** extrai o PKG aberto onde o shadPS4 vai procurá-lo, usando as pastas
+configuradas no próprio shadPS4 (o `config.json` dele, lido automaticamente):
+
+| PKG | Vai para |
+|---|---|
+| Jogo | `<pasta de jogos>/CUSA00000` (você escolhe a pasta se o shadPS4 tiver mais de uma) |
+| Atualização | ao lado do jogo instalado: `<pasta do jogo>-patch` (ou a pasta `-UPDATE` que já existir) |
+| DLC | `<pasta de DLC>/CUSA00000/<DLC>` (por padrão `~/.local/share/shadPS4/addcont`) |
+
+Antes de instalar, mostra o destino e avisa se o jogo base não estiver instalado ou se já houver
+uma versão mais nova. Abra o shadPS4 e adicione uma pasta de jogos nas configurações dele antes.
+Para um shadPS4 portátil, escolha a pasta `user` dele em ☰ → **Pasta do shadPS4…**.
 
 ### Abrir arquivos .pkg com duplo clique
 
