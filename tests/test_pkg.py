@@ -3,6 +3,7 @@
 
 import os
 import threading
+from pathlib import Path
 
 import pytest
 from conftest import files_of, sample_tree
@@ -16,13 +17,17 @@ def test_tree_and_contents(make_pkg, compress):
     path, _ = make_pkg(tree, compress=compress)
     with Pkg(path) as pkg:
         expected = files_of(tree)
-        got = {n.path: n for n in pkg.root.walk() if not n.is_dir and not n.path.startswith("sce_sys/")}
+        got = {
+            n.path: n for n in pkg.root.walk() if not n.is_dir and not n.path.startswith("sce_sys/")
+        }
         assert set(got) == set(expected)
         for name, data in expected.items():
             assert got[name].size == len(data)
             assert pkg.read_file(got[name]) == data
         assert pkg.find("emptydir").is_dir and not pkg.find("emptydir").children
-        assert pkg.find("data").total_size() == sum(len(v) for k, v in expected.items() if k.startswith("data/"))
+        assert pkg.find("data").total_size() == sum(
+            len(v) for k, v in expected.items() if k.startswith("data/")
+        )
 
 
 def test_metadata(make_pkg):
@@ -39,9 +44,13 @@ def test_kind_patch_and_dlc(make_pkg):
     path, _ = make_pkg(content_flags=0x40000000)  # SUBSEQUENT_PATCH
     with Pkg(path) as pkg:
         assert pkg.kind == "patch" and pkg.output_folder_name == "TEST00001-patch"
-    path, _ = make_pkg(sfo={"TITLE": "DLC", "CATEGORY": "ac", "CONTENT_ID": "UP0000-TEST00001_00-MYDLC0000000001"})
+    path, _ = make_pkg(
+        sfo={"TITLE": "DLC", "CATEGORY": "ac", "CONTENT_ID": "UP0000-TEST00001_00-MYDLC0000000001"}
+    )
     with Pkg(path) as pkg:
-        assert pkg.kind == "dlc" and pkg.output_folder_name == os.path.join("TEST00001", "MYDLC0000000001")
+        assert pkg.kind == "dlc" and pkg.output_folder_name == os.path.join(
+            "TEST00001", "MYDLC0000000001"
+        )
 
 
 def test_sce_sys_entries(make_pkg):
@@ -61,7 +70,9 @@ def test_many_files_and_large_directory(make_pkg):
     with Pkg(path) as pkg:
         many = pkg.find("many")
         assert len(many.children) == 1500
-        assert pkg.read_file(many.children[f"file_1499_{'x' * 40}.dat"]) == (1499).to_bytes(4, "little")
+        assert pkg.read_file(many.children[f"file_1499_{'x' * 40}.dat"]) == (1499).to_bytes(
+            4, "little"
+        )
 
 
 def test_extract_file_folder_and_all(make_pkg, tmp_path):
@@ -104,7 +115,7 @@ def test_not_a_pkg(tmp_path):
 
 def test_truncated_pkg(make_pkg, tmp_path):
     path, _ = make_pkg()
-    data = open(path, "rb").read()
+    data = Path(path).read_bytes()
     short = tmp_path / "short.pkg"
     short.write_bytes(data[: len(data) // 2])
     with pytest.raises(PkgError):
