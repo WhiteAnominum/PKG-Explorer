@@ -147,15 +147,13 @@ def test_many_extractions_in_a_row(window, make_pkg, tmp_path):
         dest = tmp_path / str(i)
         assert window._extract([(window.pkg.find("data"), str(dest))])
         assert (dest / "data/sub/deep/x.txt").read_bytes() == b"hello"
-    # Each extraction destroys its Qt objects right away, in the GUI thread: nothing is left for
-    # the garbage collector to free later from another thread.
-    import gc
+    # Each extraction destroys its dialog right away and its worker thread has ended.
+    import threading
 
     from pkg_explorer.gui import extraction
 
     assert not window.findChildren(extraction.QProgressDialog)
-    leftovers = [o for o in gc.get_objects() if isinstance(o, extraction.ExtractWorker)]
-    assert not leftovers
+    assert not [t for t in threading.enumerate() if t.name == "pkg-explorer-extract"]
 
 
 def test_closing_during_extraction_cancels_waits_and_closes(
