@@ -99,9 +99,16 @@ def _build_fs(tree: Tree) -> tuple[list[bytes], int, int]:
     """Returns (inner blocks starting at 0, number of inodes, superroot inode)."""
     # Inodes: 0 = reserved (ino 0 marks the end of a directory), 1 = superroot,
     # 2 = flat_path_table, 3 = uroot, then the content.
-    inodes: list[_Inode] = [_Inode(0x8000), _Inode(0x4000 | 0o755), _Inode(0x8000 | 0o644), _Inode(0x4000 | 0o755)]
+    inodes: list[_Inode] = [
+        _Inode(0x8000),
+        _Inode(0x4000 | 0o755),
+        _Inode(0x8000 | 0o644),
+        _Inode(0x4000 | 0o755),
+    ]
     files: list[tuple[int, bytes]] = [(2, b"flat path table")]
-    dirs: list[tuple[int, int, list[tuple[bytes, int, int]]]] = []  # (ino, parent, [(name, ino, type)])
+    dirs: list[
+        tuple[int, int, list[tuple[bytes, int, int]]]
+    ] = []  # (ino, parent, [(name, ino, type)])
 
     def walk(node: Tree, ino: int, parent: int) -> None:
         children = []
@@ -141,7 +148,9 @@ def _build_fs(tree: Tree) -> tuple[list[bytes], int, int]:
     for ino, content in files:
         count = -(-len(content) // BLOCK)
         inodes[ino].loc, inodes[ino].blocks = (next_block if count else 0), count
-        data_blocks += [content[i : i + BLOCK].ljust(BLOCK, b"\x00") for i in range(0, len(content), BLOCK)]
+        data_blocks += [
+            content[i : i + BLOCK].ljust(BLOCK, b"\x00") for i in range(0, len(content), BLOCK)
+        ]
         next_block += count
 
     superblock = bytearray(BLOCK)
@@ -152,7 +161,9 @@ def _build_fs(tree: Tree) -> tuple[list[bytes], int, int]:
         base = (i // per_block) * BLOCK + (i % per_block) * INODE_SIZE
         struct.pack_into("<HHIq", table, base, node.mode, 1, 0, node.size)
         struct.pack_into("<II", table, base + 0x60, node.blocks, node.loc)
-    blocks = [bytes(superblock)] + [bytes(table[i : i + BLOCK]) for i in range(0, len(table), BLOCK)]
+    blocks = [bytes(superblock)] + [
+        bytes(table[i : i + BLOCK]) for i in range(0, len(table), BLOCK)
+    ]
     return blocks + data_blocks, len(inodes), 1
 
 
@@ -168,7 +179,9 @@ def _build_pfsc(blocks: list[bytes], compress: bool) -> bytes:
         offsets.append(pos)
         pos += len(s)
     offsets.append(pos)
-    header = struct.pack("<4siiiqqQq", b"PFSC", 0, 6, BLOCK, BLOCK, map_offset, data_start, len(blocks) * BLOCK)
+    header = struct.pack(
+        "<4siiiqqQq", b"PFSC", 0, 6, BLOCK, BLOCK, map_offset, data_start, len(blocks) * BLOCK
+    )
     image = bytearray(header.ljust(map_offset, b"\x00"))
     image += struct.pack(f"<{len(offsets)}Q", *offsets)
     image = image.ljust(data_start, b"\x00") + b"".join(stored)
@@ -192,8 +205,16 @@ def build_pkg(
     rng = random.Random(seed)
     title_id = "TEST00001"
     content_id = f"UP0000-{title_id}_00-PKGEXPLORERTEST1"
-    sfo_bytes = build_sfo(sfo or {"TITLE": "Test Package", "CATEGORY": "gd", "APP_VER": "01.00",
-                                  "CONTENT_ID": content_id, "TITLE_ID": title_id})
+    sfo_bytes = build_sfo(
+        sfo
+        or {
+            "TITLE": "Test Package",
+            "CATEGORY": "gd",
+            "APP_VER": "01.00",
+            "CONTENT_ID": content_id,
+            "TITLE_ID": title_id,
+        }
+    )
 
     dk3 = bytes(rng.randrange(256) for _ in range(32))
     ekpfs = bytes(rng.randrange(256) for _ in range(32))
@@ -215,10 +236,13 @@ def build_pkg(
         pos = (pos + 15) & ~15
         layout.append((pos, size))
         pos += size + (-size % 16)  # room for the last AES block of NP entries
-    raws = [struct.pack(">6I8x", eid, 0, 0, 0, off, size) for (eid, _d, _n), (off, size) in zip(entries, layout)]
+    raws = [
+        struct.pack(">6I8x", eid, 0, 0, 0, off, size)
+        for (eid, _d, _n), (off, size) in zip(entries, layout, strict=True)
+    ]
 
     payloads = []
-    for (entry_id, data, is_np), raw in zip(entries, raws):
+    for (entry_id, data, is_np), raw in zip(entries, raws, strict=True):
         if entry_id == 0x0010:
             key1 = [bytes(256)] * 7
             key1[3] = _rsa_encrypt(dk3, keys.DK3_MODULUS, rng)
@@ -258,14 +282,20 @@ def build_pkg(
     out = bytearray(total)
     out[: len(header)] = header
     out[table_offset : table_offset + len(raws) * 32] = b"".join(raws)
-    for (off, _size), payload in zip(layout, payloads):
+    for (off, _size), payload in zip(layout, payloads, strict=True):
         out[off : off + len(payload)] = payload
     out[pfs_offset:] = pfs
     with open(path, "wb") as f:
         f.write(out)
 
-    names = {0x0010: "entry_keys", 0x0020: "image_key", 0x0400: "license.dat", 0x1000: "param.sfo", 0x1200: "icon0.png"}
+    names = {
+        0x0010: "entry_keys",
+        0x0020: "image_key",
+        0x0400: "license.dat",
+        0x1000: "param.sfo",
+        0x1200: "icon0.png",
+    }
     plain = {}
-    for (entry_id, data, _np), payload in zip(entries, payloads):
+    for (entry_id, data, _np), payload in zip(entries, payloads, strict=True):
         plain[names[entry_id]] = data if data is not None else payload
     return plain
