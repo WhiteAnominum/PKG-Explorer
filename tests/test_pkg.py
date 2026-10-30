@@ -120,3 +120,22 @@ def test_truncated_pkg(make_pkg, tmp_path):
     short.write_bytes(data[: len(data) // 2])
     with pytest.raises(PkgError):
         Pkg(short)
+
+
+def test_concurrent_reads_from_several_threads(make_pkg):
+    # The GUI reads (icon, temporary extractions) while a worker extracts: raw reads share one
+    # file handle and must not interleave.
+    from concurrent.futures import ThreadPoolExecutor
+
+    tree = sample_tree()
+    path, _ = make_pkg(tree)
+    expected = files_of(tree)
+    with Pkg(path) as pkg:
+        names = [n for n in expected if expected[n]] * 8
+
+        def read(name):
+            return name, pkg.read_file(pkg.find(name))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for name, data in pool.map(read, names):
+                assert data == expected[name], name
