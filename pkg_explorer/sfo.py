@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Leitor de param.sfo (formato PSF), baseado em src/core/file_format/psf.cpp do shadPS4.
+# param.sfo (PSF format) reader, based on src/core/file_format/psf.cpp of shadPS4.
 
 import struct
 
