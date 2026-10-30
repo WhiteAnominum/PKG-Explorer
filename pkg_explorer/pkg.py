@@ -17,6 +17,7 @@ from typing import Callable, Iterator
 
 from . import crypto
 from .entry_names import ENTRY_NAMES
+from .i18n import _
 from .sfo import parse_sfo
 
 PKG_MAGIC = 0x7F434E54
@@ -137,7 +138,11 @@ class Pkg:
             self._file.seek(offset)
             data = self._file.read(size)
         if len(data) != size:
-            raise PkgError(f"leitura fora do arquivo (offset 0x{offset:X}, tamanho 0x{size:X})")
+            raise PkgError(
+                _("read beyond end of file (offset 0x{offset:X}, size 0x{size:X})").format(
+                    offset=offset, size=size
+                )
+            )
         return data
 
     # ---- cabeçalho e entradas ----
@@ -145,7 +150,7 @@ class Pkg:
     def _parse_header(self) -> None:
         header = self._read(0, 0x1000)
         if struct.unpack_from(">I", header, 0)[0] != PKG_MAGIC:
-            raise PkgError("não parece ser um arquivo PKG válido")
+            raise PkgError(_("this does not look like a valid PKG file"))
 
         self.file_size = os.path.getsize(self.path)
         self.entry_count = struct.unpack_from(">I", header, 0x10)[0]
@@ -159,10 +164,10 @@ class Pkg:
 
         if self.pkg_size > self.file_size:
             raise PkgError(
-                "o tamanho do PKG é diferente do esperado (arquivo incompleto ou corrompido?)"
+                _("the PKG size is different from expected (incomplete or corrupted file?)")
             )
         if content_offset + content_size > self.pkg_size:
-            raise PkgError("o conteúdo é maior que o PKG")
+            raise PkgError(_("the content is larger than the PKG"))
 
         self.flags = [name for bit, name in CONTENT_FLAGS if self.content_flags & bit]
 
@@ -178,7 +183,10 @@ class Pkg:
         self.sfo: dict = {}
         sfo_entry = self._entry_by_id(0x1000)
         if sfo_entry is not None:
-            self.sfo = parse_sfo(self._read(sfo_entry.offset, sfo_entry.size))
+            try:
+                self.sfo = parse_sfo(self._read(sfo_entry.offset, sfo_entry.size))
+            except (ValueError, IndexError, struct.error) as exc:
+                raise PkgError(_("invalid param.sfo")) from exc
 
     def _entry_by_id(self, entry_id: int) -> PkgEntry | None:
         return next((e for e in self.entries if e.id == entry_id), None)
@@ -217,7 +225,7 @@ class Pkg:
         keys_entry = self._entry_by_id(0x10)
         image_entry = self._entry_by_id(0x20)
         if keys_entry is None or image_entry is None:
-            raise PkgError("o PKG não tem as entradas de chave (ENTRY_KEYS / IMAGE_KEY)")
+            raise PkgError(_("the PKG has no key entries (ENTRY_KEYS / IMAGE_KEY)"))
 
         # ENTRY_KEYS: seed_digest[32], digest1[7][32], key1[7][256]; a DK3 é key1[3].
         key1_3 = self._read(keys_entry.offset + 32 + 7 * 32 + 3 * 256, 256)
@@ -228,7 +236,7 @@ class Pkg:
             ekpfs = crypto.rsa2048_decrypt(img_key, is_dk3=False)
         except ValueError as exc:
             raise PkgError(
-                "não foi possível decifrar as chaves do PKG (só PKGs fake/fpkg são suportados)"
+                _("could not decrypt the PKG keys (only fake/fpkg PKGs are supported)")
             ) from exc
 
         seed = self._read(self.pfs_image_offset + 0x370, 16)
@@ -260,7 +268,7 @@ class Pkg:
                 self._pfsc_offset = offset
                 break
         else:
-            raise PkgError("imagem PFSC não encontrada dentro do PKG")
+            raise PkgError(_("PFSC image not found inside the PKG"))
 
         hdr = self._read_pfs(self._pfsc_offset, 0x30)
         self._block_size, block_offsets, _data_start, data_length = struct.unpack_from(
@@ -275,7 +283,7 @@ class Pkg:
         if len(raw) == self._block_size:
             return raw
         if len(raw) > self._block_size:
-            raise PkgError("bloco PFSC maior que o esperado")
+            raise PkgError(_("PFSC block larger than expected"))
         data = zlib.decompress(raw)
         return data.ljust(self._block_size, b"\x00")
 
@@ -346,7 +354,7 @@ class Pkg:
         superroot = self._read_dir(self._inodes[self._superroot_ino])
         uroot = next((ino for name, ino, typ in superroot if name == "uroot" and typ == PFS_DIR), None)
         if uroot is None:
-            raise PkgError("diretório 'uroot' não encontrado no PFS")
+            raise PkgError(_("'uroot' directory not found in the PFS"))
 
         visited: set[int] = set()
 
@@ -393,7 +401,7 @@ class Pkg:
     def iter_file(self, node: Node) -> Iterator[bytes]:
         """Gera o conteúdo de um arquivo em pedaços."""
         if node.is_dir:
-            raise PkgError(f"'{node.path}' é um diretório")
+            raise PkgError(_("'{path}' is a directory").format(path=node.path))
         if node.entry is not None:
             yield self.read_entry(node.entry)
             return
