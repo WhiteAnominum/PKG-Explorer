@@ -14,6 +14,9 @@ dependencies = [
     "PySide6-Essentials>=6.5",
 ]
 
+[project.optional-dependencies]
+test = ["pytest==9.2.0"]
+
 [project.urls]
 Homepage = "https://github.com/WhiteAnominum/PKG-Explorer"
 
@@ -31,3 +34,8 @@ packages = ["pkg_explorer", "pkg_explorer.data"]
 
 [tool.setuptools.dynamic]
 version = { attr = "pkg_explorer.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests", "."]
+addopts = "-p no:cacheprovider"
