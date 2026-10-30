@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import threading
 
+import shiboken6
 from PySide6.QtCore import QEventLoop, QObject, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
@@ -89,6 +90,17 @@ class _DialogBridge(QObject):
         self._thread.quit()
 
 
+def _destroy_now(*objects: QObject) -> None:
+    """Destroys the Qt objects of one extraction right away, in the GUI thread.
+
+    Left alone they would linger (a closed dialog is only hidden, and stays a child of the window)
+    until Python's garbage collector frees them, and the collector runs in whichever thread
+    happens to trigger it, possibly the next extraction's worker thread. Destroying Qt objects
+    from a thread they do not belong to crashes at random."""
+    for obj in objects:
+        shiboken6.delete(obj)
+
+
 def run_extraction(
     parent: QWidget,
     pkg: Pkg,
@@ -100,7 +112,7 @@ def run_extraction(
     Blocks (running a local event loop) until the worker thread has really finished, so `pkg`
     is never used by the worker after this returns. Setting `cancel` stops the extraction."""
     worker = ExtractWorker(pkg, jobs, cancel or threading.Event())
-    thread = QThread()  # no parent: it is a local object, released after wait() below
+    thread = QThread()  # no parent: destroyed explicitly below
     worker.moveToThread(thread)
 
     dialog = QProgressDialog(_("Extracting…"), _("Cancel"), 0, 1000, parent)
@@ -124,8 +136,9 @@ def run_extraction(
     thread.finished.connect(loop.quit)
     thread.start()
     loop.exec()
-    dialog.close()
     thread.wait()
+    dialog.close()
+    _destroy_now(worker, thread, bridge, loop, dialog)
 
     if result.get("error"):
         QMessageBox.critical(parent, _("Extraction error"), result["error"])
