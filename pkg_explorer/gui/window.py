@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import contextlib
 import os
+import threading
 
-from PySide6.QtCore import QModelIndex, QSettings, Qt, QUrl
+from PySide6.QtCore import QModelIndex, QSettings, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -48,6 +49,8 @@ class MainWindow(QMainWindow):
         self.model: PkgTreeModel | None = None
         self.dragged_nodes: list[Node] = []
         self._extracting = False
+        self._cancel_extraction: threading.Event | None = None
+        self._close_when_done = False
         self.kde_dnd: kde_dnd.DndExtractService | None = None
         if kde_dnd.is_available():
             service = kde_dnd.DndExtractService(self.extract_dropped, self)
@@ -155,6 +158,11 @@ class MainWindow(QMainWindow):
             self.open_pkg(path)
 
     def open_pkg(self, path: str) -> None:
+        if self._extracting:  # the current PKG is still being read by the extraction thread
+            QMessageBox.information(
+                self, _("Please wait"), _("An extraction is already in progress.")
+            )
+            return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             pkg = Pkg(path)
@@ -259,6 +267,28 @@ class MainWindow(QMainWindow):
 
     # ---- actions ----
 
+    def _extract(self, jobs: list[tuple[Node, str]]) -> bool:
+        """Every extraction goes through here: only one at a time, actions disabled meanwhile,
+        and it can be cancelled when the window is closed (see closeEvent)."""
+        if self._extracting:
+            QMessageBox.information(
+                self, _("Please wait"), _("An extraction is already in progress.")
+            )
+            return False
+        self._extracting = True
+        self._cancel_extraction = threading.Event()
+        self.set_actions_enabled(False)
+        self.act_open.setEnabled(False)
+        try:
+            return run_extraction(self, self.pkg, jobs, self._cancel_extraction)
+        finally:
+            self._extracting = False
+            self._cancel_extraction = None
+            self.set_actions_enabled(self.pkg is not None)
+            self.act_open.setEnabled(True)
+            if self._close_when_done:
+                QTimer.singleShot(0, self.close)
+
     def confirm_overwrite(self, nodes: list[Node], dest: str) -> bool:
         existing = [n.name for n in nodes if os.path.exists(os.path.join(dest, n.name))]
         if not existing:
@@ -282,7 +312,7 @@ class MainWindow(QMainWindow):
         )
         if not dest or not self.confirm_overwrite(nodes, dest):
             return
-        if run_extraction(self, self.pkg, [(n, dest) for n in nodes]):
+        if self._extract([(n, dest) for n in nodes]):
             self.statusBar().showMessage(_("Extracted to {path}").format(path=dest), 8000)
 
     def extract_selected(self) -> None:
@@ -308,7 +338,7 @@ class MainWindow(QMainWindow):
             )
             if answer != QMessageBox.Yes:
                 return
-        if run_extraction(self, self.pkg, [(self.pkg.root, target)]):
+        if self._extract([(self.pkg.root, target)]):
             self.statusBar().showMessage(_("Extracted to {path}").format(path=target), 8000)
             QDesktopServices.openUrl(QUrl.fromLocalFile(target))
 
@@ -321,11 +351,6 @@ class MainWindow(QMainWindow):
         nodes, self.dragged_nodes = self.dragged_nodes, []
         if not nodes or self.pkg is None:
             return
-        if self._extracting:
-            QMessageBox.information(
-                self, _("Please wait"), _("An extraction is already in progress.")
-            )
-            return
         if not os.path.isdir(dest):
             QMessageBox.warning(
                 self,
@@ -335,12 +360,8 @@ class MainWindow(QMainWindow):
             return
         if not self.confirm_overwrite(nodes, dest):
             return
-        self._extracting = True
-        try:
-            if run_extraction(self, self.pkg, [(n, dest) for n in nodes]):
-                self.statusBar().showMessage(_("Extracted to {path}").format(path=dest), 8000)
-        finally:
-            self._extracting = False
+        if self._extract([(n, dest) for n in nodes]):
+            self.statusBar().showMessage(_("Extracted to {path}").format(path=dest), 8000)
 
     def extract_to_temp(self, nodes: list[Node]) -> str | None:
         size = sum(n.total_size() for n in nodes)
@@ -358,7 +379,7 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.Yes:
                 return None
         temp = make_temp_dir()
-        if not run_extraction(self, self.pkg, [(n, temp) for n in nodes]):
+        if not self._extract([(n, temp) for n in nodes]):
             return None
         return temp
 
@@ -451,6 +472,21 @@ class MainWindow(QMainWindow):
                 break
 
     def closeEvent(self, event):
+        if self._extracting:
+            # The extraction thread is still reading the PKG: cancel it, wait for it to stop
+            # (in _extract) and only then close.
+            answer = QMessageBox.question(
+                self,
+                _("Extraction in progress"),
+                _("An extraction is in progress. Cancel it and close the window?"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer == QMessageBox.Yes:
+                self._close_when_done = True
+                self._cancel_extraction.set()
+            event.ignore()
+            return
         if self.pkg is not None:
             self.pkg.close()
         super().closeEvent(event)
