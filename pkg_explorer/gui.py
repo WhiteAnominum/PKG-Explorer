@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Interface gráfica (Qt / PySide6)."""
+"""Graphical interface (Qt / PySide6)."""
 
 from __future__ import annotations
 
@@ -55,12 +55,12 @@ from .cli import human_size
 from .i18n import LANGUAGE, _
 from .pkg import ExtractionCancelled, Node, Pkg, PkgError
 
-# Arrastar para fora e abrir com duplo clique extraem para uma pasta temporária primeiro;
-# acima deste tamanho pedimos confirmação.
+# Dragging out and opening with a double-click extract to a temporary folder first;
+# above this size we ask for confirmation.
 LARGE_TEMP_EXTRACT = 512 * 1024 * 1024
 
-# KDE: quanto tempo depois de terminar o arrasto ainda aceitamos o pedido de extração do
-# destino (a chamada D-Bus pode chegar logo após o fim do arrasto).
+# KDE: how long after a drag ends we still accept the extraction request from the drop target
+# (the D-Bus call may arrive right after the drag finishes).
 DND_GRACE_MS = 10_000
 
 KIND_LABELS = {"game": _("Game"), "patch": _("Update"), "dlc": "DLC"}
@@ -80,7 +80,7 @@ def make_temp_dir() -> str:
     return d
 
 
-# ---------------------------------------------------------------------------- modelo
+# ---------------------------------------------------------------------------- model
 
 
 class PkgTreeModel(QAbstractItemModel):
@@ -168,7 +168,7 @@ class PkgTreeModel(QAbstractItemModel):
         elif role == Qt.ToolTipRole and col == 0:
             return node.path
         elif role == self.SORT_ROLE:
-            # Pastas sempre antes dos arquivos.
+            # Folders always before files.
             key = (node.name.lower(), self._size(node), self.data(index, Qt.DisplayRole))[col]
             return (0 if node.is_dir else 1, key)
         return None
@@ -187,19 +187,19 @@ class SortProxy(QSortFilterProxyModel):
         a = left.data(PkgTreeModel.SORT_ROLE)
         b = right.data(PkgTreeModel.SORT_ROLE)
         if self.sortOrder() == Qt.DescendingOrder:
-            # Mantém as pastas em cima mesmo na ordem decrescente.
+            # Keep folders on top even in descending order.
             if a[0] != b[0]:
                 return a[0] > b[0]
         return a < b
 
 
-# ---------------------------------------------------------------------------- extração
+# ---------------------------------------------------------------------------- extraction
 
 
 class ExtractWorker(QObject):
-    progress = Signal(int)  # permilagem (0..1000)
+    progress = Signal(int)  # per mille (0..1000)
     current = Signal(str)
-    done = Signal(bool, str)  # sucesso, mensagem de erro
+    done = Signal(bool, str)  # success, error message
 
     def __init__(self, pkg: Pkg, jobs: list[tuple[Node, str]]):
         super().__init__()
@@ -220,14 +220,14 @@ class ExtractWorker(QObject):
                 self.pkg.extract(node, dest, self._on_chunk, self.cancel)
         except ExtractionCancelled:
             self.done.emit(False, "")
-        except Exception as exc:  # noqa: BLE001 - mostramos qualquer erro ao usuário
+        except Exception as exc:  # noqa: BLE001 - any error is shown to the user
             self.done.emit(False, str(exc))
         else:
             self.done.emit(True, "")
 
 
 def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> bool:
-    """Extrai em outra thread mostrando uma janela de progresso. Retorna True se concluiu."""
+    """Extracts in another thread while showing a progress dialog. Returns True if it finished."""
     worker = ExtractWorker(pkg, jobs)
     thread = QThread(parent)
     worker.moveToThread(thread)
@@ -263,7 +263,7 @@ def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> b
     return bool(result.get("ok"))
 
 
-# ---------------------------------------------------------------------------- árvore
+# ---------------------------------------------------------------------------- tree view
 
 
 class PkgTreeView(QTreeView):
@@ -284,12 +284,12 @@ class PkgTreeView(QTreeView):
         if not nodes:
             return
         if window.kde_dnd is not None:
-            # KDE: o destino nos avisa onde soltaram e extraímos direto lá (ver kde_dnd.py).
+            # KDE: the drop target tells us where the items were dropped and we extract there (see kde_dnd.py).
             window.dragged_nodes = nodes
             mime = window.kde_dnd.mime_data()
         else:
-            # Outros ambientes: não há protocolo para isso, então extraímos antes numa pasta
-            # temporária e arrastamos os arquivos prontos.
+            # Other desktops: there is no protocol for this, so we extract to a temporary folder
+            # first and drag the finished files.
             temp = window.extract_to_temp(nodes)
             if temp is None:
                 return
@@ -304,13 +304,13 @@ class PkgTreeView(QTreeView):
             drag.setPixmap(icon.pixmap(32, 32))
         drag.exec(Qt.CopyAction)
         if window.kde_dnd is not None:
-            # Se ninguém pedir a extração (arrasto cancelado ou solto num lugar sem suporte),
-            # esquece os itens para que outro programa não possa pedir depois.
+            # If nobody requests the extraction (drag cancelled or dropped somewhere unsupported),
+            # forget the items so that another program cannot request them later.
             pending = window.dragged_nodes
             QTimer.singleShot(DND_GRACE_MS, lambda: window.forget_drag(pending))
 
 
-# ---------------------------------------------------------------------------- janela
+# ---------------------------------------------------------------------------- window
 
 
 class MainWindow(QMainWindow):
@@ -364,7 +364,7 @@ class MainWindow(QMainWindow):
         menu_button = QToolButton()
         if QIcon.hasThemeIcon("application-menu"):
             menu_button.setIcon(QIcon.fromTheme("application-menu"))
-        else:  # sem tema de ícones (ex.: AppImage fora do KDE) o ícone padrão do Qt é o logo dele
+        else:  # without an icon theme (e.g. AppImage outside KDE) Qt's fallback icon is its logo
             menu_button.setText("☰")
         menu_button.setToolTip("Menu")
         menu_button.setPopupMode(QToolButton.InstantPopup)
@@ -372,7 +372,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(menu_button)
         self.addToolBar(toolbar)
 
-        # Cabeçalho com ícone e informações do PKG.
+        # Header with the PKG icon and information.
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(96, 96)
         self.icon_label.setScaledContents(True)
@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
 
         self.show_placeholder()
 
-    # ---- estado ----
+    # ---- state ----
 
     def show_placeholder(self) -> None:
         self.icon_label.hide()
@@ -501,7 +501,7 @@ class MainWindow(QMainWindow):
         if text:
             self.tree.expandAll()
 
-    # ---- seleção ----
+    # ---- selection ----
 
     def selected_nodes(self) -> list[Node]:
         if self.model is None:
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
             self.model.node(self.proxy.mapToSource(i))
             for i in self.tree.selectionModel().selectedRows(0)
         ]
-        # Se uma pasta e algo dentro dela estão selecionados, fica só a pasta.
+        # If a folder and something inside it are both selected, keep only the folder.
         chosen = set(map(id, nodes))
 
         def inside_selected(node: Node) -> bool:
@@ -523,7 +523,7 @@ class MainWindow(QMainWindow):
 
         return [n for n in nodes if not inside_selected(n)]
 
-    # ---- ações ----
+    # ---- actions ----
 
     def confirm_overwrite(self, nodes: list[Node], dest: str) -> bool:
         existing = [n.name for n in nodes if os.path.exists(os.path.join(dest, n.name))]
@@ -577,7 +577,7 @@ class MainWindow(QMainWindow):
             self.dragged_nodes = []
 
     def extract_dropped(self, dest: str) -> None:
-        """Chamado (via D-Bus) quando os itens arrastados são soltos numa pasta no KDE."""
+        """Called (via D-Bus) when the dragged items are dropped on a folder in KDE."""
         nodes, self.dragged_nodes = self.dragged_nodes, []
         if not nodes or self.pkg is None:
             return
@@ -618,7 +618,7 @@ class MainWindow(QMainWindow):
     def open_item(self, proxy_index: QModelIndex) -> None:
         node = self.model.node(self.proxy.mapToSource(proxy_index))
         if node.is_dir:
-            return  # o próprio QTreeView expande/recolhe
+            return  # QTreeView itself expands/collapses it
         temp = self.extract_to_temp([node])
         if temp is not None:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.join(temp, node.name)))
@@ -650,8 +650,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, _("Error"), str(exc))
 
     def ask_integration(self) -> None:
-        """Pergunta (uma vez só) se arquivos .pkg devem abrir com este programa. Usado no
-        AppImage e no Flatpak (ver desktop.py)."""
+        """Asks (only once) whether .pkg files should open with this program. Used by the
+        AppImage and the Flatpak (see desktop.py)."""
         settings = QSettings()
         if settings.value("integration/asked", False, bool):
             return
@@ -685,7 +685,7 @@ class MainWindow(QMainWindow):
             "github.com/WhiteAnominum/PKG-Explorer</a></p>",
         )
 
-    # ---- arrastar um .pkg para a janela ----
+    # ---- dropping a .pkg onto the window ----
 
     def dragEnterEvent(self, event):
         if event.source() is None and event.mimeData().hasUrls():
@@ -708,10 +708,10 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv)
     app.setApplicationName("PKG Explorer")
     app.setOrganizationName("PKG Explorer")
-    app.setDesktopFileName(desktop.APP_ID)  # Wayland: liga a janela ao atalho/ícone
+    app.setDesktopFileName(desktop.APP_ID)  # Wayland: ties the window to the shortcut/icon
     app.setWindowIcon(QIcon(str(desktop.DATA_DIR / "pkg-explorer.svg")))
     if LANGUAGE == "pt":
-        # Textos do próprio Qt (botões Yes/No, diálogos de arquivo).
+        # Qt's own texts (Yes/No buttons, file dialogs).
         translator = QTranslator(app)
         if translator.load(QLocale("pt_BR"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
             app.installTranslator(translator)
