@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Integração com o desktop em pastas isoladas (nunca toca o sistema real)."""
+"""Desktop integration in isolated folders (never touches the real system)."""
 
 import pytest
 
@@ -13,7 +13,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local/share"))
     commands = []
-    monkeypatch.setattr(desktop, "_run", lambda *cmd: commands.append(cmd))  # sem update-mime-database etc.
+    monkeypatch.setattr(desktop, "_run", lambda *cmd: commands.append(cmd))  # no update-mime-database etc.
     return tmp_path, commands
 
 
@@ -54,14 +54,14 @@ def test_no_repair_when_other_install_still_exists(home, monkeypatch, tmp_path):
     other.touch()
     monkeypatch.setenv("APPIMAGE", str(other))
     desktop.install()
-    monkeypatch.delenv("APPIMAGE")  # agora rodando "do código-fonte"
+    monkeypatch.delenv("APPIMAGE")  # now running "from source"
     assert not desktop.repair_if_moved()
-    other.unlink()  # instalação antiga sumiu: corrige
+    other.unlink()  # the old installation is gone: fix it
     assert desktop.repair_if_moved()
 
 
 def test_first_run_question(home, monkeypatch, tmp_path):
-    assert not desktop.should_ask_on_first_run()  # código-fonte: não pergunta
+    assert not desktop.should_ask_on_first_run()  # from source: does not ask
     monkeypatch.setenv("APPIMAGE", str(tmp_path / "x.AppImage"))
     assert desktop.should_ask_on_first_run()
     desktop.install()
@@ -71,12 +71,12 @@ def test_first_run_question(home, monkeypatch, tmp_path):
 def test_flatpak_installs_only_mime_in_host_home(home, monkeypatch):
     root, commands = home
     monkeypatch.setenv("FLATPAK_ID", desktop.APP_ID)
-    monkeypatch.setenv("XDG_DATA_HOME", str(root / ".var/app/x/data"))  # como dentro do Flatpak
+    monkeypatch.setenv("XDG_DATA_HOME", str(root / ".var/app/x/data"))  # as inside Flatpak
     assert desktop.should_ask_on_first_run()
     desktop.install()
     data = root / ".local/share"
     assert (data / "mime/packages" / f"{desktop.APP_ID}.xml").exists()
-    assert not (data / "applications").exists()  # o atalho vem do próprio Flatpak
+    assert not (data / "applications").exists()  # the shortcut comes from Flatpak itself
     assert not (root / ".var").exists()
     assert not any(cmd[0] == "xdg-mime" for cmd in commands)
     assert not desktop.repair_if_moved()
