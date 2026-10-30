@@ -13,7 +13,7 @@ mkdir -p "$ROOT/dist"
 
 echo ">> Ferramentas de build"
 python3 -m venv "$WORK/tools"
-"$WORK/tools/bin/pip" install -q --upgrade pip python-appimage build
+"$WORK/tools/bin/pip" install -q -r "$ROOT/packaging/appimage/requirements-build.txt"
 
 echo ">> Wheel do PKG Explorer"
 "$WORK/tools/bin/python" -m build --wheel --outdir "$WORK/wheel" "$ROOT"
@@ -26,7 +26,9 @@ cp "$ROOT/packaging/appimage/entrypoint.sh" "$RECIPE/"
 cp "$ROOT/packaging/$APP_ID.desktop" "$RECIPE/"
 cp "$ROOT/packaging/$APP_ID.png" "$RECIPE/$APP_ID.png"
 cp "$ROOT/packaging/$APP_ID.metainfo.xml" "$RECIPE/$APP_ID.appdata.xml"
-echo "$WHEEL" > "$RECIPE/requirements.txt"
+# Dependências fixas primeiro; depois o wheel do programa (que então não puxa outras versões).
+grep -v '^#' "$ROOT/packaging/appimage/requirements-app.txt" > "$RECIPE/requirements.txt"
+echo "$WHEEL" >> "$RECIPE/requirements.txt"
 
 echo ">> Montando o AppImage (Python $PYTHON_VERSION)"
 cd "$WORK"
