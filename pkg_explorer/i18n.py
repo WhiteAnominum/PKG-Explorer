@@ -40,6 +40,7 @@ PT = {
     "PFSC block larger than expected": "bloco PFSC maior que o esperado",
     "'uroot' directory not found in the PFS": "diretório 'uroot' não encontrado no PFS",
     "'{path}' is a directory": "'{path}' é um diretório",
+    "invalid or corrupted PKG: {detail}": "PKG inválido ou corrompido: {detail}",
     "invalid file name in the PKG: {name!r}": "nome de arquivo inválido no PKG: {name!r}",
     "refusing to write outside the destination folder: {path}":
         "gravação fora da pasta de destino recusada: {path}",
