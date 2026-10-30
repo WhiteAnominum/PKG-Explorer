@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Testes da janela (Qt fora da tela)."""
+"""Window tests (offscreen Qt)."""
 
 import pytest
 
@@ -34,7 +34,7 @@ def rows(proxy, parent=None):
 def test_open_shows_tree_and_info(window, make_pkg):
     path, _ = make_pkg()
     window.open_pkg(path)
-    assert rows(window.proxy) == ["data", "emptydir", "sce_sys", "eboot.bin", "version.xml"]  # pastas primeiro
+    assert rows(window.proxy) == ["data", "emptydir", "sce_sys", "eboot.bin", "version.xml"]  # folders first
     assert "Test Package" in window.info_label.text() and "TEST00001" in window.info_label.text()
     assert window.act_extract.isEnabled()
 
@@ -64,13 +64,13 @@ def test_dropped_extraction_and_forget(window, make_pkg, tmp_path):
     path, _ = make_pkg()
     window.open_pkg(path)
     window.dragged_nodes = [window.pkg.find("data/sub")]
-    window.extract_dropped(str(tmp_path))  # o que o KDE chama via D-Bus ao soltar
+    window.extract_dropped(str(tmp_path))  # what KDE calls via D-Bus on drop
     assert (tmp_path / "sub/deep/x.txt").read_bytes() == b"hello"
     assert window.dragged_nodes == []
 
     pending = [window.pkg.find("eboot.bin")]
     window.dragged_nodes = pending
-    window.forget_drag(pending)  # o prazo acabou sem pedido do destino
+    window.forget_drag(pending)  # the grace period ended without a request from the target
     window.extract_dropped(str(tmp_path))
     assert not (tmp_path / "eboot.bin").exists()
 
