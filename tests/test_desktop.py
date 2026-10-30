@@ -13,7 +13,9 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local/share"))
     commands = []
-    monkeypatch.setattr(desktop, "_run", lambda *cmd: commands.append(cmd))  # no update-mime-database etc.
+    monkeypatch.setattr(
+        desktop, "_run", lambda *cmd: commands.append(cmd)
+    )  # no update-mime-database etc.
     return tmp_path, commands
 
 
@@ -40,7 +42,8 @@ def test_desktop_entry_quotes_paths_with_spaces(home, monkeypatch, tmp_path):
 
 def test_repair_after_appimage_update(home, monkeypatch, tmp_path):
     old, new = tmp_path / "v1.AppImage", tmp_path / "v2.AppImage"
-    old.touch(); new.touch()
+    old.touch()
+    new.touch()
     monkeypatch.setenv("APPIMAGE", str(old))
     desktop.install()
     monkeypatch.setenv("APPIMAGE", str(new))
