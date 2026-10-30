@@ -1,39 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Graphical interface (Qt / PySide6)."""
+"""Main window: header with the PKG info, filter, file list and actions."""
 
 from __future__ import annotations
 
-import atexit
 import contextlib
 import os
-import shutil
-import sys
-import tempfile
-import threading
 
-from PySide6.QtCore import (
-    QAbstractItemModel,
-    QEventLoop,
-    QLibraryInfo,
-    QLocale,
-    QMimeData,
-    QModelIndex,
-    QObject,
-    QSettings,
-    QSortFilterProxyModel,
-    Qt,
-    QThread,
-    QTimer,
-    QTranslator,
-    QUrl,
-    Signal,
-)
-from PySide6.QtGui import QAction, QDesktopServices, QDrag, QIcon, QKeySequence, QPixmap
+from PySide6.QtCore import QModelIndex, QSettings, Qt, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
     QFileDialog,
-    QFileIconProvider,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -41,284 +18,27 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
-    QProgressDialog,
     QSizePolicy,
     QStyle,
     QToolBar,
     QToolButton,
-    QTreeView,
     QVBoxLayout,
     QWidget,
 )
 
-from . import __version__, desktop, kde_dnd
-from .cli import human_size
-from .i18n import LANGUAGE, _
-from .pkg import ExtractionCancelled, Node, Pkg, PkgError
+from .. import __version__, desktop, kde_dnd
+from ..i18n import _
+from ..pkg import Node, Pkg, PkgError
+from ..util import human_size
+from .extraction import make_temp_dir, run_extraction
+from .model import PkgTreeModel, SortProxy
+from .tree import PkgTreeView
 
 # Dragging out and opening with a double-click extract to a temporary folder first;
 # above this size we ask for confirmation.
 LARGE_TEMP_EXTRACT = 512 * 1024 * 1024
 
-# KDE: how long after a drag ends we still accept the extraction request from the drop target
-# (the D-Bus call may arrive right after the drag finishes).
-DND_GRACE_MS = 10_000
-
 KIND_LABELS = {"game": _("Game"), "patch": _("Update"), "dlc": "DLC"}
-
-# Default "no parent" index for the model methods (avoids a call in default arguments).
-NO_INDEX = QModelIndex()
-
-_temp_dirs: list[str] = []
-
-
-@atexit.register
-def _cleanup_temp_dirs() -> None:
-    for d in _temp_dirs:
-        shutil.rmtree(d, ignore_errors=True)
-
-
-def make_temp_dir() -> str:
-    d = tempfile.mkdtemp(prefix="pkg-explorer-")
-    _temp_dirs.append(d)
-    return d
-
-
-# ---------------------------------------------------------------------------- model
-
-
-class PkgTreeModel(QAbstractItemModel):
-    COLUMNS = (_("Name"), _("Size"), _("Type"))
-    SORT_ROLE = Qt.UserRole + 1
-
-    def __init__(self, root: Node, parent: QObject | None = None):
-        super().__init__(parent)
-        self._root = root
-        self._children: dict[int, list[Node]] = {}
-        self._sizes: dict[int, int] = {}
-        provider = QFileIconProvider()
-        self._dir_icon = provider.icon(QFileIconProvider.Folder)
-        self._file_icon = provider.icon(QFileIconProvider.File)
-
-    def _kids(self, node: Node) -> list[Node]:
-        kids = self._children.get(id(node))
-        if kids is None:
-            kids = list(node.children.values())
-            self._children[id(node)] = kids
-        return kids
-
-    def _size(self, node: Node) -> int:
-        size = self._sizes.get(id(node))
-        if size is None:
-            size = node.total_size()
-            self._sizes[id(node)] = size
-        return size
-
-    def node(self, index: QModelIndex) -> Node:
-        return index.internalPointer() if index.isValid() else self._root
-
-    def index(self, row, column, parent=NO_INDEX):
-        kids = self._kids(self.node(parent))
-        if 0 <= row < len(kids):
-            return self.createIndex(row, column, kids[row])
-        return QModelIndex()
-
-    def parent(self, index):
-        if not index.isValid():
-            return QModelIndex()
-        parent = index.internalPointer().parent
-        if parent is None or parent is self._root:
-            return QModelIndex()
-        row = self._kids(parent.parent).index(parent)
-        return self.createIndex(row, 0, parent)
-
-    def rowCount(self, parent=NO_INDEX):
-        if parent.column() > 0:
-            return 0
-        node = self.node(parent)
-        return len(self._kids(node)) if node.is_dir else 0
-
-    def hasChildren(self, parent=NO_INDEX):
-        node = self.node(parent)
-        return node.is_dir and bool(node.children)
-
-    def columnCount(self, parent=NO_INDEX):
-        return len(self.COLUMNS)
-
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return self.COLUMNS[section]
-        return None
-
-    def data(self, index, role=Qt.DisplayRole):
-        if not index.isValid():
-            return None
-        node: Node = index.internalPointer()
-        col = index.column()
-        if role == Qt.DisplayRole:
-            if col == 0:
-                return node.name
-            if col == 1:
-                return human_size(self._size(node))
-            if col == 2:
-                if node.is_dir:
-                    return _("Folder")
-                ext = os.path.splitext(node.name)[1].lstrip(".").upper()
-                return _("{ext} file").format(ext=ext) if ext else _("File")
-        elif role == Qt.DecorationRole and col == 0:
-            return self._dir_icon if node.is_dir else self._file_icon
-        elif role == Qt.TextAlignmentRole and col == 1:
-            return int(Qt.AlignRight | Qt.AlignVCenter)
-        elif role == Qt.ToolTipRole and col == 0:
-            return node.path
-        elif role == self.SORT_ROLE:
-            # Folders always before files.
-            key = (node.name.lower(), self._size(node), self.data(index, Qt.DisplayRole))[col]
-            return (0 if node.is_dir else 1, key)
-        return None
-
-    def flags(self, index):
-        if not index.isValid():
-            return Qt.NoItemFlags
-        return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
-
-    def mimeTypes(self):
-        return ["text/uri-list"]
-
-
-class SortProxy(QSortFilterProxyModel):
-    def lessThan(self, left, right):
-        a = left.data(PkgTreeModel.SORT_ROLE)
-        b = right.data(PkgTreeModel.SORT_ROLE)
-        # Keep folders on top even in descending order.
-        if self.sortOrder() == Qt.DescendingOrder and a[0] != b[0]:
-            return a[0] > b[0]
-        return a < b
-
-
-# ---------------------------------------------------------------------------- extraction
-
-
-class ExtractWorker(QObject):
-    progress = Signal(int)  # per mille (0..1000)
-    current = Signal(str)
-    done = Signal(bool, str)  # success, error message
-
-    def __init__(self, pkg: Pkg, jobs: list[tuple[Node, str]]):
-        super().__init__()
-        self.pkg = pkg
-        self.jobs = jobs
-        self.cancel = threading.Event()
-        self.total = max(1, sum(node.total_size() for node, _ in jobs))
-        self._written = 0
-
-    def _on_chunk(self, n: int) -> None:
-        self._written += n
-        self.progress.emit(int(self._written * 1000 / self.total))
-
-    def run(self) -> None:
-        try:
-            for node, dest in self.jobs:
-                self.current.emit(node.path or _("(everything)"))
-                self.pkg.extract(node, dest, self._on_chunk, self.cancel)
-        except ExtractionCancelled:
-            self.done.emit(False, "")
-        except Exception as exc:  # noqa: BLE001 - any error is shown to the user
-            self.done.emit(False, str(exc))
-        else:
-            self.done.emit(True, "")
-
-
-def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> bool:
-    """Extracts in another thread while showing a progress dialog. Returns True if it finished."""
-    worker = ExtractWorker(pkg, jobs)
-    thread = QThread(parent)
-    worker.moveToThread(thread)
-
-    dialog = QProgressDialog(_("Extracting…"), _("Cancel"), 0, 1000, parent)
-    dialog.setWindowTitle(_("Extracting"))
-    dialog.setWindowModality(Qt.WindowModal)
-    dialog.setMinimumDuration(300)
-    dialog.setMinimumWidth(480)
-    dialog.setAutoClose(False)
-    dialog.setAutoReset(False)
-    dialog.canceled.connect(worker.cancel.set)
-
-    result: dict = {}
-    loop = QEventLoop()
-
-    def finished(ok: bool, error: str) -> None:
-        result["ok"], result["error"] = ok, error
-        thread.quit()
-
-    worker.progress.connect(dialog.setValue)
-    worker.current.connect(
-        lambda path: dialog.setLabelText(_("Extracting:\n{path}").format(path=path))
-    )
-    worker.done.connect(finished)
-    thread.started.connect(worker.run)
-    thread.finished.connect(loop.quit)
-    thread.start()
-    loop.exec()
-    dialog.close()
-    thread.wait()
-
-    if result.get("error"):
-        QMessageBox.critical(parent, _("Extraction error"), result["error"])
-    return bool(result.get("ok"))
-
-
-# ---------------------------------------------------------------------------- tree view
-
-
-class PkgTreeView(QTreeView):
-    def __init__(self, window: MainWindow):
-        super().__init__()
-        self.window_ = window
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
-        self.setUniformRowHeights(True)
-        self.setSortingEnabled(True)
-        self.setAlternatingRowColors(True)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-
-    def startDrag(self, supported_actions):
-        window = self.window_
-        nodes = window.selected_nodes()
-        if not nodes:
-            return
-        if window.kde_dnd is not None:
-            # KDE: the drop target tells us where the items were dropped and we extract there
-            # (see kde_dnd.py).
-            window.dragged_nodes = nodes
-            mime = window.kde_dnd.mime_data()
-        else:
-            # Other desktops: there is no protocol for this, so we extract to a temporary folder
-            # first and drag the finished files.
-            temp = window.extract_to_temp(nodes)
-            if temp is None:
-                return
-            mime = QMimeData()
-            mime.setUrls([QUrl.fromLocalFile(os.path.join(temp, n.name)) for n in nodes])
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        icon = (
-            self.model()
-            .index(self.currentIndex().row(), 0, self.currentIndex().parent())
-            .data(Qt.DecorationRole)
-        )
-        if icon is not None:
-            drag.setPixmap(icon.pixmap(32, 32))
-        drag.exec(Qt.CopyAction)
-        if window.kde_dnd is not None:
-            # If nobody requests the extraction (drag cancelled or dropped somewhere unsupported),
-            # forget the items so that another program cannot request them later.
-            pending = window.dragged_nodes
-            QTimer.singleShot(DND_GRACE_MS, lambda: window.forget_drag(pending))
-
-
-# ---------------------------------------------------------------------------- window
 
 
 class MainWindow(QMainWindow):
@@ -734,32 +454,3 @@ class MainWindow(QMainWindow):
         if self.pkg is not None:
             self.pkg.close()
         super().closeEvent(event)
-
-
-def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv if argv is None else argv
-    app = QApplication(argv)
-    app.setApplicationName("PKG Explorer")
-    app.setOrganizationName("PKG Explorer")
-    app.setDesktopFileName(desktop.APP_ID)  # Wayland: ties the window to the shortcut/icon
-    app.setWindowIcon(QIcon(str(desktop.DATA_DIR / "pkg-explorer.svg")))
-    if LANGUAGE == "pt":
-        # Qt's own texts (Yes/No buttons, file dialogs).
-        translator = QTranslator(app)
-        if translator.load(
-            QLocale("pt_BR"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)
-        ):
-            app.installTranslator(translator)
-    with contextlib.suppress(OSError):
-        desktop.repair_if_moved()
-    window = MainWindow()
-    window.show()
-    if desktop.should_ask_on_first_run():
-        QTimer.singleShot(0, window.ask_integration)
-    if len(argv) > 1:
-        window.open_pkg(argv[1])
-    return app.exec()
-
-
-if __name__ == "__main__":
-    sys.exit(main())
