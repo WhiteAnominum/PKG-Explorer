@@ -47,6 +47,16 @@ CONTENT_FLAGS = (
 # Quantos blocos internos (0x10000 cada) ler do disco de uma vez ao extrair.
 READ_BATCH_BLOCKS = 64
 
+# Limites contra PKGs malformados/maliciosos (muito acima do que PKGs reais usam).
+PFS_BLOCK_SIZE = 0x10000
+MAX_ENTRIES = 10_000
+MAX_SFO_SIZE = 1 << 20
+MAX_NP_ENTRY_SIZE = 1 << 20
+MAX_INODES = 2_000_000
+MAX_DIR_DEPTH = 128
+PFSC_SEARCH_LIMIT = 256 << 20
+ENTRY_CHUNK = 1 << 20
+
 ProgressCallback = Callable[[int], None]  # recebe bytes escritos desde a última chamada
 
 
@@ -56,6 +66,10 @@ class PkgError(Exception):
 
 class ExtractionCancelled(Exception):
     pass
+
+
+def _corrupt(detail: str) -> PkgError:
+    return PkgError(_("invalid or corrupted PKG: {detail}").format(detail=detail))
 
 
 def check_name(name: str) -> str:
@@ -136,9 +150,16 @@ class Pkg:
             self._derive_keys()
             self._open_pfs()
             self.root = self._build_tree()
-        except Exception:
+        except PkgError:
             self._file.close()
             raise
+        except Exception as exc:
+            # Qualquer outra falha ao interpretar o arquivo (estrutura absurda, falta de memória
+            # etc.) vira uma mensagem de PKG inválido em vez de derrubar o programa.
+            self._file.close()
+            if isinstance(exc, OSError):
+                raise
+            raise _corrupt(f"{type(exc).__name__}: {exc}") from exc
 
     def close(self) -> None:
         self._file.close()
@@ -186,6 +207,10 @@ class Pkg:
             )
         if content_offset + content_size > self.pkg_size:
             raise PkgError(_("the content is larger than the PKG"))
+        if self.pfs_image_offset + self.pfs_image_size > self.file_size:
+            raise _corrupt("PFS image extends past the end of the file")
+        if self.entry_count > MAX_ENTRIES:
+            raise _corrupt(f"too many entries ({self.entry_count})")
 
         self.flags = [name for bit, name in CONTENT_FLAGS if self.content_flags & bit]
 
@@ -201,6 +226,8 @@ class Pkg:
         self.sfo: dict = {}
         sfo_entry = self._entry_by_id(0x1000)
         if sfo_entry is not None:
+            if sfo_entry.size > MAX_SFO_SIZE:
+                raise _corrupt("param.sfo is too large")
             try:
                 self.sfo = parse_sfo(self._read(sfo_entry.offset, sfo_entry.size))
             except (ValueError, IndexError, struct.error) as exc:
@@ -261,9 +288,19 @@ class Pkg:
         data_key, tweak_key = crypto.pfs_gen_crypto_key(ekpfs, seed)
         self._pfs = crypto.PfsDecryptor(data_key, tweak_key)
 
+    def iter_entry(self, entry: PkgEntry) -> Iterator[bytes]:
+        if entry.id in NP_ENTRY_IDS:
+            yield self.read_entry(entry)
+            return
+        # Em pedaços: o tamanho vem do arquivo e não deve virar uma alocação gigante.
+        for pos in range(0, entry.size, ENTRY_CHUNK):
+            yield self._read(entry.offset + pos, min(ENTRY_CHUNK, entry.size - pos))
+
     def read_entry(self, entry: PkgEntry) -> bytes:
         if entry.id not in NP_ENTRY_IDS:
-            return self._read(entry.offset, entry.size)
+            return b"".join(self.iter_entry(entry))
+        if entry.size > MAX_NP_ENTRY_SIZE:
+            raise _corrupt(f"entry {entry.name} is too large")
         # O AES-CBC trabalha em blocos de 16 bytes: o último bloco cifrado continua no arquivo
         # além de `size`. (O original lê memória fora do buffer aqui e erra os últimos bytes.)
         padded = self._read(entry.offset, entry.size + (-entry.size % 16))
@@ -281,7 +318,7 @@ class Pkg:
         return data[offset - start : offset - start + size]
 
     def _open_pfs(self) -> None:
-        for offset in range(0x20000, self.pfs_image_size, 0x10000):
+        for offset in range(0x20000, min(self.pfs_image_size, PFSC_SEARCH_LIMIT), 0x10000):
             if self._read_pfs(offset, 16)[:4] == PFSC_MAGIC:
                 self._pfsc_offset = offset
                 break
@@ -292,9 +329,17 @@ class Pkg:
         self._block_size, block_offsets, _data_start, data_length = struct.unpack_from(
             "<qqQq", hdr, 0x10
         )
+        if self._block_size != PFS_BLOCK_SIZE:
+            raise _corrupt(f"unexpected PFS block size 0x{self._block_size:X}")
         num_blocks = data_length // self._block_size
+        available = self.pfs_image_size - self._pfsc_offset  # bytes da imagem PFSC no arquivo
+        if not 0 < num_blocks or block_offsets < 0 or block_offsets + (num_blocks + 1) * 8 > available:
+            raise _corrupt("invalid PFSC block table")
         sector_map = self._read_pfs(self._pfsc_offset + block_offsets, (num_blocks + 1) * 8)
         self._sector_map = struct.unpack(f"<{num_blocks + 1}Q", sector_map)
+        smap = self._sector_map
+        if smap[-1] > available or any(smap[i] > smap[i + 1] for i in range(num_blocks)):
+            raise _corrupt("invalid PFSC block table")
         self.num_blocks = num_blocks
 
     def _decode_block(self, raw: bytes) -> bytes:
@@ -302,11 +347,20 @@ class Pkg:
             return raw
         if len(raw) > self._block_size:
             raise PkgError(_("PFSC block larger than expected"))
-        data = zlib.decompress(raw)
+        # max_length: um bloco nunca descomprime para mais que block_size ("bomba" de compressão).
+        decompressor = zlib.decompressobj()
+        try:
+            data = decompressor.decompress(raw, self._block_size)
+        except zlib.error as exc:
+            raise _corrupt(f"bad compressed block ({exc})") from exc
+        if decompressor.unconsumed_tail:
+            raise PkgError(_("PFSC block larger than expected"))
         return data.ljust(self._block_size, b"\x00")
 
     def _read_blocks(self, first: int, count: int) -> Iterator[bytes]:
         """Gera os blocos internos `first`..`first+count-1`, já decifrados e descomprimidos."""
+        if first < 0 or count < 0 or first + count > self.num_blocks:
+            raise _corrupt(f"block range {first}+{count} outside the PFS")
         smap = self._sector_map
         block = first
         end = first + count
@@ -335,6 +389,10 @@ class Pkg:
         inode_count = struct.unpack_from("<q", superblock, 0x30)[0]
         self._superroot_ino = struct.unpack_from("<q", superblock, 0x48)[0]
         per_block = self._block_size // INODE_SIZE
+        if not 0 < inode_count <= min(MAX_INODES, per_block * (self.num_blocks - 1)):
+            raise _corrupt(f"invalid inode count ({inode_count})")
+        if not 0 <= self._superroot_ino < inode_count:
+            raise _corrupt("invalid root directory")
 
         inodes: list[Inode] = []
         block = 1
@@ -359,7 +417,11 @@ class Pkg:
                 ino, typ, namelen, entsize = struct.unpack_from("<iiii", data, pos)
                 if ino == 0 or entsize <= 0:
                     break
+                if entsize < 16 or pos + entsize > len(data) or not 0 <= namelen <= entsize - 16:
+                    raise _corrupt("invalid directory entry")
                 if typ in (PFS_FILE, PFS_DIR):
+                    if not 0 <= ino < len(self._inodes):
+                        raise _corrupt("directory entry points to an invalid inode")
                     name = data[pos + 16 : pos + 16 + namelen].decode("utf-8", "replace")
                     result.append((name, ino, typ))
                 pos += entsize
@@ -376,20 +438,25 @@ class Pkg:
 
         visited: set[int] = set()
 
-        def fill(node: Node, dir_ino: int) -> None:
+        def fill(node: Node, dir_ino: int, depth: int) -> None:
             if dir_ino in visited:  # proteção contra laços em PFS malformado
                 return
+            if depth > MAX_DIR_DEPTH:
+                raise _corrupt("folders nested too deeply")
             visited.add(dir_ino)
             for name, ino, typ in self._read_dir(self._inodes[dir_ino]):
                 check_name(name)
                 if typ == PFS_DIR:
                     child = node.children.get(name) or Node(name, True, node)
                     node.children[name] = child
-                    fill(child, ino)
+                    fill(child, ino, depth + 1)
                 else:
-                    node.children[name] = Node(name, False, node, self._inodes[ino].size, inode=ino)
+                    size = self._inodes[ino].size
+                    if size < 0:
+                        raise _corrupt(f"negative size for {name!r}")
+                    node.children[name] = Node(name, False, node, size, inode=ino)
 
-        fill(root, uroot)
+        fill(root, uroot, 0)
 
         # Entradas da tabela do PKG vão para sce_sys/, como no extrator original. Se o PFS já
         # tiver um arquivo com o mesmo nome, o do PFS prevalece (no original ele sobrescreve).
@@ -422,7 +489,7 @@ class Pkg:
         if node.is_dir:
             raise PkgError(_("'{path}' is a directory").format(path=node.path))
         if node.entry is not None:
-            yield self.read_entry(node.entry)
+            yield from self.iter_entry(node.entry)
             return
         inode = self._inodes[node.inode]
         remaining = inode.size
