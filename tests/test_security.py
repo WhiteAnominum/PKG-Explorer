@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""PKGs maliciosos e malformados."""
+"""Malicious and malformed PKGs."""
 
 import os
 import random
@@ -26,7 +26,7 @@ def test_malicious_folder_name_is_rejected(make_pkg):
 
 
 def _fake_pkg_with(names):
-    """Pkg sem arquivo por trás, com uma árvore montada à mão (para testar só a extração)."""
+    """A Pkg with no file behind it and a hand-built tree (to test extraction only)."""
     pkg = object.__new__(Pkg)
     pkg.iter_file = lambda node: iter([b"data"])
     root = Node("", True)
@@ -67,9 +67,9 @@ def test_extract_does_not_follow_symlinks_in_destination(tmp_path):
 
 
 def test_failed_open_does_not_delete_existing_file(tmp_path):
-    # Se o destino não pode ser aberto para escrita, o que já existe lá não pode ser apagado.
+    # If the destination cannot be opened for writing, whatever is already there must not be deleted.
     pkg, root = _fake_pkg_with(["busy"])
-    (tmp_path / "busy").mkdir()  # abrir uma pasta como arquivo falha
+    (tmp_path / "busy").mkdir()  # opening a folder as a file fails
     with pytest.raises(OSError):
         pkg.extract(root, tmp_path)
     assert (tmp_path / "busy").is_dir()
@@ -103,7 +103,7 @@ def test_fuzz_header_and_file(make_pkg, tmp_path):
             pos = rng.randrange(0x1000) if rng.random() < 0.6 else rng.randrange(len(data))
             data[pos] = rng.choice([0, 0xFF, rng.randrange(256)])
         target.write_bytes(data)
-        _only_pkg_errors(target)  # qualquer exceção que não seja PkgError faz o teste falhar
+        _only_pkg_errors(target)  # any exception other than PkgError fails the test
 
 
 def test_fuzz_pfs_structures(make_pkg, monkeypatch):
