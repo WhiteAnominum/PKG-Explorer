@@ -6,7 +6,8 @@ Under Flatpak the shortcut and the MIME type are already exported by Flatpak its
 detection by file signature (<magic>) and lowers the priority of *.pkg, so that apps cannot take
 over extensions that belong to other types. Since .pkg is already application/x-xar (macOS
 installer), the system would keep opening it in the wrong app. That is why, under Flatpak too, we
-install the complete MIME type in the user's folder (the shortcut is still the one Flatpak exports)."""
+install the complete MIME type in the user's folder (the shortcut is still the one Flatpak
+exports)."""
 
 from __future__ import annotations
 
@@ -48,7 +49,7 @@ def _paths() -> dict[str, Path]:
 
 def _desktop_quote(arg: str) -> str:
     """Quotes an argument as the Desktop Entry spec requires (for paths with spaces)."""
-    if not any(c in arg for c in ' \t\n"\'\\><~|&;$*?#()`'):
+    if not any(c in arg for c in " \t\n\"'\\><~|&;$*?#()`"):
         return arg
     escaped = arg.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
     return f'"{escaped}"'
@@ -150,7 +151,7 @@ def _installed_program() -> str | None:
     for line in text.splitlines():
         if line.startswith("Exec="):
             try:
-                return shlex.split(line[len("Exec="):])[0]
+                return shlex.split(line[len("Exec=") :])[0]
             except (ValueError, IndexError):
                 return None
     return None
