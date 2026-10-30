@@ -7,9 +7,11 @@ pytest.importorskip("PySide6.QtWidgets")
 
 from conftest import sample_tree  # noqa: E402
 from PySide6.QtCore import QItemSelectionModel  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
-from pkg_explorer import gui  # noqa: E402
+from pkg_explorer import kde_dnd  # noqa: E402
+from pkg_explorer.gui.extraction import run_extraction  # noqa: E402
+from pkg_explorer.gui.window import MainWindow  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -19,8 +21,8 @@ def app():
 
 @pytest.fixture
 def window(app, monkeypatch):
-    monkeypatch.setattr(gui.kde_dnd, "is_available", lambda: False)
-    w = gui.MainWindow()
+    monkeypatch.setattr(kde_dnd, "is_available", lambda: False)
+    w = MainWindow()
     yield w
     w.close()
 
@@ -50,7 +52,7 @@ def test_open_invalid_file_shows_error(window, tmp_path, monkeypatch):
     bad = tmp_path / "bad.pkg"
     bad.write_bytes(b"x" * 5000)
     errors = []
-    monkeypatch.setattr(gui.QMessageBox, "critical", lambda *a: errors.append(a))
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: errors.append(a))
     window.open_pkg(str(bad))
     assert errors and window.pkg is None
 
@@ -69,7 +71,7 @@ def test_selection_and_extraction(window, make_pkg, tmp_path):
     )
     nodes = window.selected_nodes()
     assert [n.name for n in nodes] == ["eboot.bin"]
-    assert gui.run_extraction(window, window.pkg, [(n, str(tmp_path)) for n in nodes])
+    assert run_extraction(window, window.pkg, [(n, str(tmp_path)) for n in nodes])
     assert (tmp_path / "eboot.bin").read_bytes() == sample_tree()["eboot.bin"]
 
 
