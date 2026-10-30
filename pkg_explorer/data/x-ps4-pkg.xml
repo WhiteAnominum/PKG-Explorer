@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Tipo MIME para PKGs de PS4. A extensão .pkg também é usada por instaladores do macOS
-     (application/x-xar); a assinatura "\x7FCNT" no início do arquivo diferencia os dois. -->
+<!-- MIME type for PS4 PKGs. The .pkg extension is also used by macOS installers
+     (application/x-xar); the "\x7FCNT" signature at the start of the file tells them apart. -->
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-ps4-pkg">
     <comment>PS4 package</comment>
