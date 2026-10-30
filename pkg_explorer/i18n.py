@@ -99,6 +99,8 @@ PT = {
     "Folder already exists": "Pasta já existe",
     "{path}\n\nalready exists. Extract over it (files with the same name will be replaced)?": "{path}\n\njá existe. Extrair por cima (arquivos com o mesmo nome serão substituídos)?",
     "Please wait": "Aguarde",
+    "Extraction in progress": "Extração em andamento",
+    "An extraction is in progress. Cancel it and close the window?": "Há uma extração em andamento. Cancelar e fechar a janela?",
     "An extraction is already in progress.": "Já existe uma extração em andamento.",
     "Unsupported destination": "Destino não suportado",
     "Can only extract to local folders.\n\nDestination: {path}": "Só é possível extrair para pastas locais.\n\nDestino: {path}",
