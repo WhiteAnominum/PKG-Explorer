@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import os
 import shutil
 import sys
@@ -65,6 +66,9 @@ DND_GRACE_MS = 10_000
 
 KIND_LABELS = {"game": _("Game"), "patch": _("Update"), "dlc": "DLC"}
 
+# Default "no parent" index for the model methods (avoids a call in default arguments).
+NO_INDEX = QModelIndex()
+
 _temp_dirs: list[str] = []
 
 
@@ -113,7 +117,7 @@ class PkgTreeModel(QAbstractItemModel):
     def node(self, index: QModelIndex) -> Node:
         return index.internalPointer() if index.isValid() else self._root
 
-    def index(self, row, column, parent=QModelIndex()):
+    def index(self, row, column, parent=NO_INDEX):
         kids = self._kids(self.node(parent))
         if 0 <= row < len(kids):
             return self.createIndex(row, column, kids[row])
@@ -128,17 +132,17 @@ class PkgTreeModel(QAbstractItemModel):
         row = self._kids(parent.parent).index(parent)
         return self.createIndex(row, 0, parent)
 
-    def rowCount(self, parent=QModelIndex()):
+    def rowCount(self, parent=NO_INDEX):
         if parent.column() > 0:
             return 0
         node = self.node(parent)
         return len(self._kids(node)) if node.is_dir else 0
 
-    def hasChildren(self, parent=QModelIndex()):
+    def hasChildren(self, parent=NO_INDEX):
         node = self.node(parent)
         return node.is_dir and bool(node.children)
 
-    def columnCount(self, parent=QModelIndex()):
+    def columnCount(self, parent=NO_INDEX):
         return len(self.COLUMNS)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -186,10 +190,9 @@ class SortProxy(QSortFilterProxyModel):
     def lessThan(self, left, right):
         a = left.data(PkgTreeModel.SORT_ROLE)
         b = right.data(PkgTreeModel.SORT_ROLE)
-        if self.sortOrder() == Qt.DescendingOrder:
-            # Keep folders on top even in descending order.
-            if a[0] != b[0]:
-                return a[0] > b[0]
+        # Keep folders on top even in descending order.
+        if self.sortOrder() == Qt.DescendingOrder and a[0] != b[0]:
+            return a[0] > b[0]
         return a < b
 
 
@@ -249,7 +252,9 @@ def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> b
         thread.quit()
 
     worker.progress.connect(dialog.setValue)
-    worker.current.connect(lambda path: dialog.setLabelText(_("Extracting:\n{path}").format(path=path)))
+    worker.current.connect(
+        lambda path: dialog.setLabelText(_("Extracting:\n{path}").format(path=path))
+    )
     worker.done.connect(finished)
     thread.started.connect(worker.run)
     thread.finished.connect(loop.quit)
@@ -284,7 +289,8 @@ class PkgTreeView(QTreeView):
         if not nodes:
             return
         if window.kde_dnd is not None:
-            # KDE: the drop target tells us where the items were dropped and we extract there (see kde_dnd.py).
+            # KDE: the drop target tells us where the items were dropped and we extract there
+            # (see kde_dnd.py).
             window.dragged_nodes = nodes
             mime = window.kde_dnd.mime_data()
         else:
@@ -297,8 +303,10 @@ class PkgTreeView(QTreeView):
             mime.setUrls([QUrl.fromLocalFile(os.path.join(temp, n.name)) for n in nodes])
         drag = QDrag(self)
         drag.setMimeData(mime)
-        icon = self.model().index(self.currentIndex().row(), 0, self.currentIndex().parent()).data(
-            Qt.DecorationRole
+        icon = (
+            self.model()
+            .index(self.currentIndex().row(), 0, self.currentIndex().parent())
+            .data(Qt.DecorationRole)
         )
         if icon is not None:
             drag.setPixmap(icon.pixmap(32, 32))
@@ -330,7 +338,9 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         style = self.style()
-        self.act_open = QAction(style.standardIcon(QStyle.SP_DialogOpenButton), _("Open PKG…"), self)
+        self.act_open = QAction(
+            style.standardIcon(QStyle.SP_DialogOpenButton), _("Open PKG…"), self
+        )
         self.act_open.setShortcut(QKeySequence.Open)
         self.act_open.triggered.connect(self.choose_pkg)
         self.act_extract = QAction(
@@ -462,10 +472,8 @@ class MainWindow(QMainWindow):
         icon = pkg.find("sce_sys/icon0.png")
         pixmap = QPixmap()
         if icon is not None and not icon.is_dir:
-            try:
+            with contextlib.suppress(PkgError):
                 pixmap.loadFromData(pkg.read_file(icon))
-            except PkgError:
-                pass
         self.icon_label.setPixmap(pixmap)
         self.icon_label.setVisible(not pixmap.isNull())
 
@@ -476,8 +484,12 @@ class MainWindow(QMainWindow):
             (_("Type"), KIND_LABELS.get(pkg.kind, pkg.kind)),
             (_("Version"), version),
             ("Content ID", pkg.content_id),
-            (_("Contents"), _("{count} files, {size}").format(
-                count=len(files), size=human_size(sum(n.size for n in files)))),
+            (
+                _("Contents"),
+                _("{count} files, {size}").format(
+                    count=len(files), size=human_size(sum(n.size for n in files))
+                ),
+            ),
         ]
         table = "".join(
             f"<tr><td style='padding-right:12px; color:gray'>{k}</td><td>{v}</td></tr>"
@@ -491,7 +503,9 @@ class MainWindow(QMainWindow):
         if nodes:
             size = sum(n.total_size() for n in nodes)
             self.statusBar().showMessage(
-                _("{count} item(s) selected, {size}").format(count=len(nodes), size=human_size(size))
+                _("{count} item(s) selected, {size}").format(
+                    count=len(nodes), size=human_size(size)
+                )
             )
         else:
             self.statusBar().showMessage(self.pkg.path if self.pkg else "")
@@ -543,7 +557,9 @@ class MainWindow(QMainWindow):
         if not nodes:
             QMessageBox.information(self, _("Extract"), _("Select one or more files or folders."))
             return
-        dest = QFileDialog.getExistingDirectory(self, _("Extract to…"), os.path.dirname(self.pkg.path))
+        dest = QFileDialog.getExistingDirectory(
+            self, _("Extract to…"), os.path.dirname(self.pkg.path)
+        )
         if not dest or not self.confirm_overwrite(nodes, dest):
             return
         if run_extraction(self, self.pkg, [(n, dest) for n in nodes]):
@@ -561,10 +577,14 @@ class MainWindow(QMainWindow):
         target = os.path.join(dest, self.pkg.output_folder_name)
         if os.path.exists(target):
             answer = QMessageBox.question(
-                self, _("Folder already exists"),
-                _("{path}\n\nalready exists. Extract over it (files with the same name will be "
-                  "replaced)?").format(path=target),
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                self,
+                _("Folder already exists"),
+                _(
+                    "{path}\n\nalready exists. Extract over it (files with the same name will be "
+                    "replaced)?"
+                ).format(path=target),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
             if answer != QMessageBox.Yes:
                 return
@@ -582,11 +602,14 @@ class MainWindow(QMainWindow):
         if not nodes or self.pkg is None:
             return
         if self._extracting:
-            QMessageBox.information(self, _("Please wait"), _("An extraction is already in progress."))
+            QMessageBox.information(
+                self, _("Please wait"), _("An extraction is already in progress.")
+            )
             return
         if not os.path.isdir(dest):
             QMessageBox.warning(
-                self, _("Unsupported destination"),
+                self,
+                _("Unsupported destination"),
                 _("Can only extract to local folders.\n\nDestination: {path}").format(path=dest),
             )
             return
@@ -603,10 +626,14 @@ class MainWindow(QMainWindow):
         size = sum(n.total_size() for n in nodes)
         if size > LARGE_TEMP_EXTRACT:
             answer = QMessageBox.question(
-                self, _("Large file"),
-                _("This will first extract {size} to a temporary folder. Continue?\n\n"
-                  "Tip: for large files, use “Extract selected…”.").format(size=human_size(size)),
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                self,
+                _("Large file"),
+                _(
+                    "This will first extract {size} to a temporary folder. Continue?\n\n"
+                    "Tip: for large files, use “Extract selected…”."
+                ).format(size=human_size(size)),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
             if answer != QMessageBox.Yes:
                 return None
@@ -659,8 +686,14 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Question)
         box.setWindowTitle(_("Open .pkg files"))
-        box.setText(_("Do you want PS4 .pkg files to open with PKG Explorer when you double-click them?"))
-        extra = "" if desktop.in_flatpak() else _("This also adds a shortcut to the applications menu. ")
+        box.setText(
+            _("Do you want PS4 .pkg files to open with PKG Explorer when you double-click them?")
+        )
+        extra = (
+            ""
+            if desktop.in_flatpak()
+            else _("This also adds a shortcut to the applications menu. ")
+        )
         box.setInformativeText(extra + _("You can change this later in the window's ☰ menu."))
         yes = box.addButton(_("Yes"), QMessageBox.YesRole)
         box.addButton(_("Not now"), QMessageBox.NoRole)
@@ -713,12 +746,12 @@ def main(argv: list[str] | None = None) -> int:
     if LANGUAGE == "pt":
         # Qt's own texts (Yes/No buttons, file dialogs).
         translator = QTranslator(app)
-        if translator.load(QLocale("pt_BR"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+        if translator.load(
+            QLocale("pt_BR"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)
+        ):
             app.installTranslator(translator)
-    try:
+    with contextlib.suppress(OSError):
         desktop.repair_if_moved()
-    except OSError:
-        pass
     window = MainWindow()
     window.show()
     if desktop.should_ask_on_first_run():
