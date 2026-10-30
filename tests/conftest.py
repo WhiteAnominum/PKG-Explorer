@@ -8,7 +8,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import random  # noqa: E402
 
 import pytest  # noqa: E402
-
 from pkgbuilder import build_pkg  # noqa: E402
 
 
