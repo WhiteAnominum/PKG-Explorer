@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.2.0"]
+test = ["pytest==9.2.0", "ruff==0.17.3"]
 
 [project.urls]
 Homepage = "https://github.com/WhiteAnominum/PKG-Explorer"
@@ -39,3 +39,16 @@ version = { attr = "pkg_explorer.__version__" }
 testpaths = ["tests"]
 pythonpath = ["tests", "."]
 addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["pkg_explorer/keys.py", "pkg_explorer/entry_names.py"]  # generated
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, bugbear, pyupgrade, simplify
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# One translation per line reads better than strings split across lines.
+"pkg_explorer/i18n.py" = ["E501"]
