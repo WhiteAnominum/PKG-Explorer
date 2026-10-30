@@ -9,8 +9,10 @@ A graphical tool to browse the contents of PS4 `.pkg` files as if they were an a
 
 - Opens a PKG in under a second, even when it is tens of GB: only the structure is read.
 - Shows the game icon, title, Title ID, type (base game, update or DLC) and version.
-- Extract selected files or folders, or the whole package (using the same folder layout as
-  shadPS4: `CUSA00000`, `CUSA00000-patch`, `CUSA00000/<DLC>`).
+- Extract selected files or folders, or the whole package (with the same folder names as the
+  shadPS4 extractor: `CUSA00000`, `CUSA00000-patch`, `CUSA00000/<DLC>`).
+- **Install in shadPS4**: puts a game, update or DLC straight into the right shadPS4 folder
+  (see [Install in shadPS4](#install-in-shadps4)).
 - Drag files and folders from the window to your file manager, like with a zip
   (see [KDE Plasma and other desktops](#kde-plasma-and-other-desktops)).
 - Double-click a file to open it with its default application.
@@ -99,6 +101,21 @@ Command line:
 ```
 
 The language follows the system; to force one, set `PKG_EXPLORER_LANG=en` or `PKG_EXPLORER_LANG=pt`.
+
+### Install in shadPS4
+
+**Install in shadPS4** extracts the open PKG where shadPS4 looks for it, using the folders set in
+shadPS4 itself (its `config.json`, read automatically):
+
+| PKG | Goes to |
+|---|---|
+| Game | `<game folder>/CUSA00000` (you choose the game folder if shadPS4 has more than one) |
+| Update | next to the installed game: `<game's folder>-patch` (or its existing `-UPDATE` folder) |
+| DLC | `<DLC folder>/CUSA00000/<DLC>` (by default `~/.local/share/shadPS4/addcont`) |
+
+Before installing, it shows the destination and warns if the base game is not installed or if a
+newer version is already there. Open shadPS4 and add a game folder in its settings first. For a
+portable shadPS4, choose its `user` folder in ☰ → **shadPS4 folder…**.
 
 ### Open .pkg files with a double-click
 
