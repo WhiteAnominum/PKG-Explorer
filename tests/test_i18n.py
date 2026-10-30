@@ -12,7 +12,7 @@ SOURCES = pathlib.Path(__file__).parent.parent / "pkg_explorer"
 
 def translatable_strings() -> set[str]:
     found = set()
-    for path in SOURCES.glob("*.py"):
+    for path in SOURCES.rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_" and node.args:
                 arg = node.args[0]
