@@ -198,6 +198,7 @@ def build_pkg(
     content_flags: int = 0,
     compress: bool = True,
     seed: int = 0,
+    digests: bool = True,
 ) -> dict[str, bytes]:
     """Writes a fake PKG to `path`. Returns the plaintext entries (name -> data) for checking."""
     import random
@@ -222,6 +223,8 @@ def build_pkg(
 
     # Entries: (id, plaintext data, encrypted as NP?)
     entries = [(0x0010, None, False), (0x0020, None, False)]
+    if digests:
+        entries.insert(0, (0x0001, None, False))  # filled in below, once the others exist
     if np_data:
         entries.append((0x0400, np_data, True))
     entries.append((0x1000, sfo_bytes, False))
@@ -233,17 +236,22 @@ def build_pkg(
     layout = []
     for entry_id, data, _np in entries:
         size = {0x0010: 32 + 7 * 32 + 7 * 256, 0x0020: 256}.get(entry_id, len(data or b""))
+        if entry_id == 0x0001:
+            size = 32 * len(entries)
         pos = (pos + 15) & ~15
         layout.append((pos, size))
         pos += size + (-size % 16)  # room for the last AES block of NP entries
     raws = [
-        struct.pack(">6I8x", eid, 0, 0, 0, off, size)
-        for (eid, _d, _n), (off, size) in zip(entries, layout, strict=True)
+        # flags 1 bit 31: encrypted entry (hashed with its size rounded up to 16 bytes)
+        struct.pack(">6I8x", eid, 0, 0x80000000 if np else 0, 0, off, size)
+        for (eid, _d, np), (off, size) in zip(entries, layout, strict=True)
     ]
 
     payloads = []
     for (entry_id, data, is_np), raw in zip(entries, raws, strict=True):
-        if entry_id == 0x0010:
+        if entry_id == 0x0001:
+            payloads.append(b"")  # filled in below
+        elif entry_id == 0x0010:
             key1 = [bytes(256)] * 7
             key1[3] = _rsa_encrypt(dk3, keys.DK3_MODULUS, rng)
             payloads.append(bytes(32 + 7 * 32) + b"".join(key1))
@@ -278,6 +286,20 @@ def build_pkg(
     struct.pack_into(">I", header, 0x78, content_flags)
     struct.pack_into(">QQ", header, 0x410, pfs_offset, len(pfs))
     struct.pack_into(">Q", header, 0x430, total)
+    struct.pack_into(">QQ", header, 0x20, table_offset, pfs_offset - table_offset)  # body
+    struct.pack_into(">I", header, 0x438, 0x10000)  # PFS signed size
+
+    if digests:  # see pkg_explorer/integrity.py
+        payloads[0] = bytes(32) + b"".join(hashlib.sha256(p).digest() for p in payloads[1:])
+        header[0x140:0x160] = hashlib.sha256(payloads[0]).digest()
+        body = bytearray(pfs_offset - table_offset)
+        body[: len(raws) * 32] = b"".join(raws)
+        for (off, _size), payload in zip(layout, payloads, strict=True):
+            body[off - table_offset : off - table_offset + len(payload)] = payload
+        header[0x160:0x180] = hashlib.sha256(body).digest()
+        header[0x440:0x460] = hashlib.sha256(pfs).digest()
+        header[0x460:0x480] = hashlib.sha256(pfs[:0x10000]).digest()
+        header[0xFE0:0x1000] = hashlib.sha256(header[:0xFE0]).digest()
 
     out = bytearray(total)
     out[: len(header)] = header
@@ -289,6 +311,7 @@ def build_pkg(
         f.write(out)
 
     names = {
+        0x0001: "digests",
         0x0010: "entry_keys",
         0x0020: "image_key",
         0x0400: "license.dat",
