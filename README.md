@@ -131,6 +131,13 @@ KDE has its own protocol (the same one used by Ark), which PKG Explorer implemen
 for large files, prefer the **Extract selected…** button, which writes straight to the chosen
 folder.
 
+## Legal notice
+
+PKG Explorer is a tool to inspect and extract PS4 packages that you are entitled to use, such as
+backups of games you own or homebrew. It does not include, download or distribute any game, and
+it must not be used for piracy. It is not affiliated with or endorsed by Sony Interactive
+Entertainment. "PlayStation" and "PS4" are trademarks of Sony Interactive Entertainment Inc.
+
 ## Credits
 
 - The PKG/PFS reading logic was adapted from the
