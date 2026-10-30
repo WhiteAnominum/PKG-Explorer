@@ -130,6 +130,14 @@ soltar". O KDE tem um protocolo próprio (o mesmo usado pelo Ark), que o PKG Exp
 Fora do KDE, para arquivos grandes, prefira o botão **Extrair selecionados…**, que grava direto
 na pasta escolhida.
 
+## Aviso legal
+
+O PKG Explorer é uma ferramenta para inspecionar e extrair pacotes de PS4 que você tem direito de
+usar, como backups de jogos que você possui ou homebrew. Ele não inclui, baixa nem distribui
+nenhum jogo, e não deve ser usado para pirataria. Não tem relação com a Sony Interactive
+Entertainment nem é endossado por ela. "PlayStation" e "PS4" são marcas registradas da Sony
+Interactive Entertainment Inc.
+
 ## Créditos
 
 - A lógica de leitura de PKG/PFS foi adaptada do
