@@ -197,3 +197,49 @@ def test_only_one_extraction_at_a_time(window, make_pkg, tmp_path, monkeypatch):
     assert refused.count("Please wait") == 2 and False in refused
     assert window.pkg.path == path
     assert (tmp_path / "big.bin").stat().st_size == 4 << 20
+
+
+def accept_message_boxes(monkeypatch):
+    """Custom QMessageBoxes (install confirmation) answer with their AcceptRole button."""
+    shown = []
+
+    def exec_(box):
+        shown.append(box.informativeText())
+        for button in box.buttons():
+            if box.buttonRole(button) == QMessageBox.AcceptRole:
+                button.click()
+                return 0
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", exec_)
+    return shown
+
+
+def test_install_in_shadps4(window, make_pkg, tmp_path, monkeypatch):
+    import json
+
+    from PySide6.QtCore import QSettings
+
+    games = tmp_path / "games"
+    user = tmp_path / "shadPS4"
+    user.mkdir()
+    general = {"install_dirs": [{"path": str(games), "enabled": True}]}
+    (user / "config.json").write_text(json.dumps({"General": general}))
+    monkeypatch.setattr(QSettings, "value", lambda self, key, default=None, type=None: str(user))
+    shown = accept_message_boxes(monkeypatch)
+
+    path, _ = make_pkg()
+    window.open_pkg(path)
+    assert window.act_install.isEnabled()
+    window.install_shadps4()
+    assert (games / "TEST00001" / "eboot.bin").is_file()
+    assert str(games / "TEST00001") in shown[-1]
+
+    # The update goes next to the game, and the confirmation says the folder already exists
+    # the second time.
+    path, _ = make_pkg(content_flags=0x40000000)
+    window.open_pkg(path)
+    window.install_shadps4()
+    window.install_shadps4()
+    assert (games / "TEST00001-patch" / "eboot.bin").is_file()
+    assert "already exists" in shown[-1] and "not found" not in shown[-1]
