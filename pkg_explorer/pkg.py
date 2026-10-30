@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Adaptado de src/core/file_format/pkg.cpp, pkg.h e pfs.h do ShadPs4Plus / shadPS4.
+# Adapted from src/core/file_format/pkg.cpp, pkg.h and pfs.h of ShadPs4Plus / shadPS4.
 #
-# Diferente do original, que extrai o pacote inteiro, aqui a árvore de arquivos é montada uma
-# vez e cada arquivo é lido sob demanda, decifrando/descomprimindo só os blocos dele.
+# Unlike the original, which extracts the whole package, here the file tree is built once and
+# each file is read on demand, decrypting/decompressing only its own blocks.
+# See docs/FORMAT.md for the layout of the format.
 
 from __future__ import annotations
 
@@ -44,10 +45,10 @@ CONTENT_FLAGS = (
     (0x60000000, "CUMULATIVE_PATCH"),
 )
 
-# Quantos blocos internos (0x10000 cada) ler do disco de uma vez ao extrair.
+# How many inner blocks (0x10000 each) to read from disk at once when extracting.
 READ_BATCH_BLOCKS = 64
 
-# Limites contra PKGs malformados/maliciosos (muito acima do que PKGs reais usam).
+# Limits against malformed/malicious PKGs (far above what real PKGs use).
 PFS_BLOCK_SIZE = 0x10000
 MAX_ENTRIES = 10_000
 MAX_SFO_SIZE = 1 << 20
@@ -57,7 +58,7 @@ MAX_DIR_DEPTH = 128
 PFSC_SEARCH_LIMIT = 256 << 20
 ENTRY_CHUNK = 1 << 20
 
-ProgressCallback = Callable[[int], None]  # recebe bytes escritos desde a última chamada
+ProgressCallback = Callable[[int], None]  # receives the bytes written since the last call
 
 
 class PkgError(Exception):
@@ -73,16 +74,16 @@ def _corrupt(detail: str) -> PkgError:
 
 
 def check_name(name: str) -> str:
-    """Nomes vêm de dentro do PKG: um PKG malicioso pode usar "../" ou "/" para gravar fora da
-    pasta de destino ao extrair ("Zip Slip"). Nenhum PKG legítimo usa esses nomes."""
+    """Names come from inside the PKG: a malicious PKG could use "../" or "/" to write outside the
+    destination folder when extracting ("Zip Slip"). No legitimate PKG uses such names."""
     if name in ("", ".", "..") or any(c in name for c in "/\\\0"):
         raise PkgError(_("invalid file name in the PKG: {name!r}").format(name=name))
     return name
 
 
 def _safe_target(dest_dir: str, name: str) -> str:
-    """Caminho de `name` dentro de `dest_dir`, garantindo que não escapa de `dest_dir`
-    (nem por nome, nem por links simbólicos já existentes no destino)."""
+    """Path of `name` inside `dest_dir`, making sure it does not escape `dest_dir`
+    (neither by name nor through symbolic links already present in the destination)."""
     target = os.path.join(dest_dir, check_name(name))
     base = os.path.realpath(dest_dir)
     if os.path.commonpath([base, os.path.realpath(target)]) != base:
@@ -96,7 +97,7 @@ class PkgEntry:
     name: str
     offset: int
     size: int
-    raw: bytes  # os 32 bytes da entrada como estão no arquivo (usados para derivar chaves)
+    raw: bytes  # the entry's 32 bytes as stored in the file (used to derive keys)
 
 
 @dataclass
@@ -114,8 +115,8 @@ class Node:
     is_dir: bool
     parent: Node | None = None
     size: int = 0
-    inode: int | None = None  # arquivo dentro do PFS
-    entry: PkgEntry | None = None  # arquivo da tabela de entradas do PKG (sce_sys)
+    inode: int | None = None  # file inside the PFS
+    entry: PkgEntry | None = None  # file from the PKG entry table (sce_sys)
     children: dict[str, Node] = field(default_factory=dict)
 
     @property
@@ -154,8 +155,8 @@ class Pkg:
             self._file.close()
             raise
         except Exception as exc:
-            # Qualquer outra falha ao interpretar o arquivo (estrutura absurda, falta de memória
-            # etc.) vira uma mensagem de PKG inválido em vez de derrubar o programa.
+            # Any other failure while parsing the file (absurd structure, out of memory, etc.)
+            # becomes an "invalid PKG" message instead of crashing the program.
             self._file.close()
             if isinstance(exc, OSError):
                 raise
@@ -170,7 +171,7 @@ class Pkg:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # ---- leitura bruta ----
+    # ---- raw reading ----
 
     def _read(self, offset: int, size: int) -> bytes:
         with self._lock:
@@ -184,7 +185,7 @@ class Pkg:
             )
         return data
 
-    # ---- cabeçalho e entradas ----
+    # ---- header and entries ----
 
     def _parse_header(self) -> None:
         header = self._read(0, 0x1000)
@@ -246,7 +247,7 @@ class Pkg:
 
     @property
     def kind(self) -> str:
-        """'patch', 'dlc' ou 'game', com a mesma regra do extrator original."""
+        """'patch', 'dlc' or 'game', using the same rule as the original extractor."""
         if any("PATCH" in f for f in self.flags):
             return "patch"
         if self.category == "ac":
@@ -255,7 +256,7 @@ class Pkg:
 
     @property
     def output_folder_name(self) -> str:
-        """Pasta usada pelo extrator original / shadPS4: TITLEID, TITLEID-patch ou TITLEID/DLC."""
+        """Folder used by the original extractor / shadPS4: TITLEID, TITLEID-patch or TITLEID/DLC."""
         if self.kind == "patch":
             return f"{self.title_id}-patch"
         if self.kind == "dlc":
@@ -264,7 +265,7 @@ class Pkg:
                 return os.path.join(self.title_id, parts[2])
         return self.title_id
 
-    # ---- chaves ----
+    # ---- keys ----
 
     def _derive_keys(self) -> None:
         keys_entry = self._entry_by_id(0x10)
@@ -272,7 +273,7 @@ class Pkg:
         if keys_entry is None or image_entry is None:
             raise PkgError(_("the PKG has no key entries (ENTRY_KEYS / IMAGE_KEY)"))
 
-        # ENTRY_KEYS: seed_digest[32], digest1[7][32], key1[7][256]; a DK3 é key1[3].
+        # ENTRY_KEYS: seed_digest[32], digest1[7][32], key1[7][256]; the DK3 is key1[3].
         key1_3 = self._read(keys_entry.offset + 32 + 7 * 32 + 3 * 256, 256)
         try:
             self._dk3 = crypto.rsa2048_decrypt(key1_3, is_dk3=True)
@@ -292,7 +293,7 @@ class Pkg:
         if entry.id in NP_ENTRY_IDS:
             yield self.read_entry(entry)
             return
-        # Em pedaços: o tamanho vem do arquivo e não deve virar uma alocação gigante.
+        # In chunks: the size comes from the file and must not turn into a huge allocation.
         for pos in range(0, entry.size, ENTRY_CHUNK):
             yield self._read(entry.offset + pos, min(ENTRY_CHUNK, entry.size - pos))
 
@@ -301,8 +302,8 @@ class Pkg:
             return b"".join(self.iter_entry(entry))
         if entry.size > MAX_NP_ENTRY_SIZE:
             raise _corrupt(f"entry {entry.name} is too large")
-        # O AES-CBC trabalha em blocos de 16 bytes: o último bloco cifrado continua no arquivo
-        # além de `size`. (O original lê memória fora do buffer aqui e erra os últimos bytes.)
+        # AES-CBC works on 16-byte blocks: the last encrypted block continues in the file past
+        # `size`. (The original reads memory past its buffer here and gets the last bytes wrong.)
         padded = self._read(entry.offset, entry.size + (-entry.size % 16))
         iv_key = crypto.iv_key_hash256(entry.raw + self._dk3)
         return crypto.aes_cbc_decrypt(iv_key, padded)[: entry.size]
@@ -310,7 +311,7 @@ class Pkg:
     # ---- PFS ----
 
     def _read_pfs(self, offset: int, size: int) -> bytes:
-        """Lê e decifra `size` bytes da imagem PFS externa a partir de `offset`."""
+        """Reads and decrypts `size` bytes of the outer PFS image starting at `offset`."""
         start = offset & ~(crypto.XTS_SECTOR_SIZE - 1)
         end = -(-(offset + size) // crypto.XTS_SECTOR_SIZE) * crypto.XTS_SECTOR_SIZE
         data = self._read(self.pfs_image_offset + start, end - start)
@@ -332,7 +333,7 @@ class Pkg:
         if self._block_size != PFS_BLOCK_SIZE:
             raise _corrupt(f"unexpected PFS block size 0x{self._block_size:X}")
         num_blocks = data_length // self._block_size
-        available = self.pfs_image_size - self._pfsc_offset  # bytes da imagem PFSC no arquivo
+        available = self.pfs_image_size - self._pfsc_offset  # bytes of the PFSC image in the file
         if not 0 < num_blocks or block_offsets < 0 or block_offsets + (num_blocks + 1) * 8 > available:
             raise _corrupt("invalid PFSC block table")
         sector_map = self._read_pfs(self._pfsc_offset + block_offsets, (num_blocks + 1) * 8)
@@ -347,7 +348,7 @@ class Pkg:
             return raw
         if len(raw) > self._block_size:
             raise PkgError(_("PFSC block larger than expected"))
-        # max_length: um bloco nunca descomprime para mais que block_size ("bomba" de compressão).
+        # max_length: a block never decompresses to more than block_size (compression bomb).
         decompressor = zlib.decompressobj()
         try:
             data = decompressor.decompress(raw, self._block_size)
@@ -358,7 +359,7 @@ class Pkg:
         return data.ljust(self._block_size, b"\x00")
 
     def _read_blocks(self, first: int, count: int) -> Iterator[bytes]:
-        """Gera os blocos internos `first`..`first+count-1`, já decifrados e descomprimidos."""
+        """Yields inner blocks `first`..`first+count-1`, decrypted and decompressed."""
         if first < 0 or count < 0 or first + count > self.num_blocks:
             raise _corrupt(f"block range {first}+{count} outside the PFS")
         smap = self._sector_map
@@ -373,7 +374,7 @@ class Pkg:
             block = batch_end
 
     def _read_block(self, index: int) -> bytes:
-        """Um bloco interno, com cache pequeno (usado para inodes e diretórios)."""
+        """One inner block, with a small cache (used for inodes and directories)."""
         cached = self._block_cache.get(index)
         if cached is not None:
             self._block_cache.move_to_end(index)
@@ -408,7 +409,7 @@ class Pkg:
         return inodes
 
     def _read_dir(self, inode: Inode) -> list[tuple[str, int, int]]:
-        """Lista (nome, número do inode, tipo) de um diretório, sem '.' e '..'."""
+        """Lists (name, inode number, type) of a directory, without '.' and '..'."""
         result = []
         for b in range(inode.loc, inode.loc + inode.blocks):
             data = self._read_block(b)
@@ -439,7 +440,7 @@ class Pkg:
         visited: set[int] = set()
 
         def fill(node: Node, dir_ino: int, depth: int) -> None:
-            if dir_ino in visited:  # proteção contra laços em PFS malformado
+            if dir_ino in visited:  # protection against loops in a malformed PFS
                 return
             if depth > MAX_DIR_DEPTH:
                 raise _corrupt("folders nested too deeply")
@@ -458,8 +459,8 @@ class Pkg:
 
         fill(root, uroot, 0)
 
-        # Entradas da tabela do PKG vão para sce_sys/, como no extrator original. Se o PFS já
-        # tiver um arquivo com o mesmo nome, o do PFS prevalece (no original ele sobrescreve).
+        # Entries from the PKG table go into sce_sys/, as in the original extractor. If the PFS
+        # already has a file with the same name, the PFS one wins (the original overwrites it).
         for entry in self.entries:
             parent = root
             *dirs, filename = ("sce_sys/" + entry.name).split("/")
@@ -482,10 +483,10 @@ class Pkg:
             if child.is_dir:
                 Pkg._sort(child)
 
-    # ---- extração ----
+    # ---- extraction ----
 
     def iter_file(self, node: Node) -> Iterator[bytes]:
-        """Gera o conteúdo de um arquivo em pedaços."""
+        """Yields a file's content in chunks."""
         if node.is_dir:
             raise PkgError(_("'{path}' is a directory").format(path=node.path))
         if node.entry is not None:
@@ -510,8 +511,8 @@ class Pkg:
         progress: ProgressCallback | None = None,
         cancel: threading.Event | None = None,
     ) -> str:
-        """Extrai `node` (arquivo ou pasta) para dentro de `dest_dir`. Retorna o caminho criado.
-        A raiz é extraída diretamente em `dest_dir`."""
+        """Extracts `node` (file or folder) into `dest_dir`. Returns the path created.
+        The root is extracted directly into `dest_dir`."""
         dest_dir = os.fspath(dest_dir)
         target = _safe_target(dest_dir, node.name) if node.parent else dest_dir
         if node.is_dir:
@@ -521,9 +522,9 @@ class Pkg:
             return target
 
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
-        # O_NOFOLLOW: não grava através de um link simbólico que já esteja no destino.
+        # O_NOFOLLOW: do not write through a symbolic link already present in the destination.
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
-        out = os.fdopen(os.open(target, flags, 0o644), "wb")  # fora do try: se falhar, nada a apagar
+        out = os.fdopen(os.open(target, flags, 0o644), "wb")  # outside the try: if it fails, there is nothing to delete
         try:
             with out:
                 for chunk in self.iter_file(node):
@@ -533,7 +534,7 @@ class Pkg:
                     if progress is not None:
                         progress(len(chunk))
         except BaseException:
-            # Não deixa arquivo pela metade para trás.
+            # Do not leave a half-written file behind.
             try:
                 os.remove(target)
             except OSError:
