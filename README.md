@@ -143,6 +143,9 @@ The tests do not need any game: `tests/pkgbuilder.py` generates synthetic fake P
 like real ones) with whatever content each test needs, including malicious and malformed ones.
 They run on GitHub Actions on every push, and a release is only built if they pass.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the code is organized and how to send changes,
+and [docs/FORMAT.md](docs/FORMAT.md) for the PKG/PFS format.
+
 ## Legal notice
 
 PKG Explorer is a tool to inspect and extract PS4 packages that you are entitled to use, such as
