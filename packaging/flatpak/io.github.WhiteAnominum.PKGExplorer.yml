@@ -1,0 +1,55 @@
+id: io.github.WhiteAnominum.PKGExplorer
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+# PySide6 oficial da Qt para Flatpak, construído sobre o Qt do runtime do KDE.
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: pkg-explorer
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Ler PKGs de qualquer lugar (inclusive outros discos) e extrair para a pasta onde o usuário
+  # soltar os arquivos ao arrastar (o KDE só informa o caminho da pasta).
+  - --filesystem=host
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  # Dependência de criptografia (AES/RSA). Wheels oficiais do PyPI.
+  - name: python3-cryptography
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} --no-build-isolation cryptography
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/95/95/86342356ff5953b3fb06f7ef7c5bee212d45e770abc7218d451b9148313c/cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2
+      - type: file
+        url: https://files.pythonhosted.org/packages/1a/f1/b474e930c4d910328780e3940da76f5aa5cbc48ce1fc14e44d239d9ea9db/cryptography-50.0.2-cp311-abi3-manylinux_2_28_x86_64.whl
+        sha256: 4061c0079120205fb760c58acab6443e217307dcf05e3702cf970e0689972856
+      - type: file
+        url: https://files.pythonhosted.org/packages/b6/ae/315bbeee126a769cbde43cf4908acb4b40408d8bf8bbf334dd7368d8dadf/pycparser-3.12-py3-none-any.whl
+        sha256: a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e
+
+  - name: pkg-explorer
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 packaging/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 packaging/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 pkg_explorer/data/pkg-explorer.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 pkg_explorer/data/x-ps4-pkg.xml ${FLATPAK_DEST}/share/mime/packages/${FLATPAK_ID}.xml
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .venv
+          - dist
+          - temp
+          - .flatpak-builder
+          - build-dir
