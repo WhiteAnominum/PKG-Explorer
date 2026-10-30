@@ -96,3 +96,30 @@ def test_filter(window, make_pkg, app):
     window.filter_edit.setText("x.txt")
     app.processEvents()
     assert rows(window.proxy) == ["data"]
+
+
+def test_progress_dialog_is_only_touched_from_the_gui_thread(make_pkg, tmp_path, monkeypatch, app):
+    # Widgets must not be used from the extraction thread (it crashed at random before).
+    from PySide6.QtCore import QThread
+    from PySide6.QtWidgets import QWidget
+
+    from pkg_explorer.gui import extraction
+    from pkg_explorer.pkg import Pkg
+
+    gui_thread = QThread.currentThread()
+    calls = []
+
+    class SpyDialog(extraction.QProgressDialog):
+        def setLabelText(self, text):
+            calls.append(QThread.currentThread() is gui_thread)
+            super().setLabelText(text)
+
+        def setValue(self, value):
+            calls.append(QThread.currentThread() is gui_thread)
+            super().setValue(value)
+
+    monkeypatch.setattr(extraction, "QProgressDialog", SpyDialog)
+    path, _ = make_pkg()
+    with Pkg(path) as pkg:
+        assert run_extraction(QWidget(), pkg, [(pkg.find("data"), str(tmp_path))])
+    assert calls and all(calls)
