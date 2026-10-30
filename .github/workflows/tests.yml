@@ -23,6 +23,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - name: Install
         run: pip install -r packaging/appimage/requirements-app.txt -e ".[test]"
+      - name: Lint and formatting
+        run: ruff check . && ruff format --check .
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
