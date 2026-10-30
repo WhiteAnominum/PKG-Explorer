@@ -2,7 +2,7 @@ id: io.github.WhiteAnominum.PKGExplorer
 runtime: org.kde.Platform
 runtime-version: '6.11'
 sdk: org.kde.Sdk
-# PySide6 oficial da Qt para Flatpak, construído sobre o Qt do runtime do KDE.
+# Qt's official PySide6 for Flatpak, built on top of the KDE runtime's Qt.
 base: io.qt.PySide.BaseApp
 base-version: '6.11'
 command: pkg-explorer
@@ -12,15 +12,16 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # Ler PKGs de qualquer lugar (inclusive outros discos) e extrair para a pasta onde o usuário
-  # soltar os arquivos ao arrastar (o KDE só informa o caminho da pasta).
+  # Read PKGs from anywhere (including other drives) and extract to the folder where the user
+  # drops files when dragging (KDE only passes the folder path). Also needed to install the
+  # full MIME type in ~/.local/share/mime (see pkg_explorer/desktop.py).
   - --filesystem=host
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
 
 modules:
-  # Dependência de criptografia (AES/RSA). Wheels oficiais do PyPI.
+  # Cryptography dependency (AES/RSA). Official wheels from PyPI.
   - name: python3-cryptography
     buildsystem: simple
     build-commands:
