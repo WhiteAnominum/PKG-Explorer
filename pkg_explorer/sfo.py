@@ -11,7 +11,7 @@ FMT_INT32 = 0x0404
 
 def parse_sfo(data: bytes) -> dict[str, str | int | bytes]:
     if data[:4] != PSF_MAGIC:
-        raise ValueError("param.sfo inválido")
+        raise ValueError("invalid param.sfo")
     key_table, data_table, count = struct.unpack_from("<III", data, 8)
     values: dict[str, str | int | bytes] = {}
     for i in range(count):
