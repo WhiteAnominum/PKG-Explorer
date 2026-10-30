@@ -33,6 +33,29 @@ comando também está disponível: `./PKG-Explorer-x86_64.AppImage --cli info jo
 
 Para gerar o AppImage a partir do código: `./packaging/appimage/build.sh` (resultado em `dist/`).
 
+### Flatpak
+
+Baixe o `PKG-Explorer.flatpak` na página de
+[Releases](https://github.com/WhiteAnominum/PKG-Explorer/releases) e instale:
+
+```sh
+flatpak install --user PKG-Explorer.flatpak
+```
+
+No Flatpak a associação de arquivos `.pkg` é feita automaticamente na instalação. O programa
+pede acesso aos arquivos do computador (`--filesystem=host`) para ler PKGs em qualquer disco e
+extrair na pasta onde você soltar os arquivos ao arrastar.
+
+Para gerar a partir do código (requer `org.flatpak.Builder`):
+
+```sh
+flatpak run org.flatpak.Builder --user --force-clean --install build-dir \
+    packaging/flatpak/io.github.WhiteAnominum.PKGExplorer.yml
+```
+
+> Se você usar o AppImage com a associação ativada **e** o Flatpak, o duplo clique abre o
+> AppImage. Para usar o Flatpak, desative a associação no menu ☰ do AppImage.
+
 ### A partir do código-fonte
 
 Requer Python 3.10 ou mais recente.
