@@ -17,6 +17,9 @@ arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados
   (veja [KDE Plasma e outros ambientes](#kde-plasma-e-outros-ambientes)).
 - Duplo clique abre o arquivo no programa padrão.
 - Filtro por nome.
+- Verificação de integridade: uma conferência rápida ao abrir o PKG (avisa se o arquivo estiver
+  danificado) e uma completa em ☰ → **Verificar integridade…**, que lê o arquivo todo (cerca de
+  um minuto a cada 10 GB).
 - Associação de arquivos: dê duplo clique num `.pkg` no gerenciador de arquivos para abri-lo.
 - Interface em português e inglês, escolhida pelo idioma do sistema.
 
@@ -97,6 +100,7 @@ Linha de comando:
 .venv/bin/pkg-explorer-cli list jogo.pkg
 .venv/bin/pkg-explorer-cli extract jogo.pkg sce_sys/icon0.png eboot.bin -o pasta_destino
 .venv/bin/pkg-explorer-cli extract jogo.pkg -o pasta_destino     # tudo
+.venv/bin/pkg-explorer-cli verify jogo.pkg              # integridade (--quick: pula os dados do jogo)
 ```
 
 O idioma segue o do sistema; para forçar um, use `PKG_EXPLORER_LANG=en` ou `PKG_EXPLORER_LANG=pt`.
