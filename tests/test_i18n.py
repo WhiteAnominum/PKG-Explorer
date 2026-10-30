@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Toda mensagem traduzível tem tradução, e as traduções usam os mesmos campos {…}."""
+"""Every translatable message has a translation, and translations use the same {…} fields."""
 
 import ast
 import pathlib
@@ -16,7 +16,7 @@ def translatable_strings() -> set[str]:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_" and node.args:
                 arg = node.args[0]
-                assert isinstance(arg, ast.Constant), f"{path.name}: _() com texto não literal"
+                assert isinstance(arg, ast.Constant), f"{path.name}: _() with a non-literal text"
                 found.add(arg.value)
     return found
 
