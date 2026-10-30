@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Window tests (offscreen Qt)."""
 
+import gc
+
 import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
+import shiboken6  # noqa: E402
 from conftest import sample_tree  # noqa: E402
 from PySide6.QtCore import QItemSelectionModel  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
@@ -25,6 +28,11 @@ def window(app, monkeypatch):
     w = MainWindow()
     yield w
     w.close()
+    # Destroy the window now, at a safe point. Left to Python's garbage collector, old windows
+    # were destroyed at random moments, e.g. inside a later test's extraction event loop, and
+    # Qt crashed (seen in CI).
+    shiboken6.delete(w)
+    gc.collect()
 
 
 def rows(proxy, parent=None):
