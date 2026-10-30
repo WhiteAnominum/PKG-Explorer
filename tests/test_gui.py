@@ -5,10 +5,10 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
+from conftest import sample_tree  # noqa: E402
 from PySide6.QtCore import QItemSelectionModel  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from conftest import sample_tree  # noqa: E402
 from pkg_explorer import gui  # noqa: E402
 
 
@@ -27,6 +27,7 @@ def window(app, monkeypatch):
 
 def rows(proxy, parent=None):
     from PySide6.QtCore import QModelIndex
+
     parent = parent or QModelIndex()
     return [proxy.index(r, 0, parent).data() for r in range(proxy.rowCount(parent))]
 
@@ -34,7 +35,13 @@ def rows(proxy, parent=None):
 def test_open_shows_tree_and_info(window, make_pkg):
     path, _ = make_pkg()
     window.open_pkg(path)
-    assert rows(window.proxy) == ["data", "emptydir", "sce_sys", "eboot.bin", "version.xml"]  # folders first
+    assert rows(window.proxy) == [
+        "data",
+        "emptydir",
+        "sce_sys",
+        "eboot.bin",
+        "version.xml",
+    ]  # folders first
     assert "Test Package" in window.info_label.text() and "TEST00001" in window.info_label.text()
     assert window.act_extract.isEnabled()
 
@@ -52,8 +59,14 @@ def test_selection_and_extraction(window, make_pkg, tmp_path):
     path, _ = make_pkg()
     window.open_pkg(path)
     proxy = window.proxy
-    eboot = next(proxy.index(r, 0) for r in range(proxy.rowCount()) if proxy.index(r, 0).data() == "eboot.bin")
-    window.tree.selectionModel().select(eboot, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+    eboot = next(
+        proxy.index(r, 0)
+        for r in range(proxy.rowCount())
+        if proxy.index(r, 0).data() == "eboot.bin"
+    )
+    window.tree.selectionModel().select(
+        eboot, QItemSelectionModel.Select | QItemSelectionModel.Rows
+    )
     nodes = window.selected_nodes()
     assert [n.name for n in nodes] == ["eboot.bin"]
     assert gui.run_extraction(window, window.pkg, [(n, str(tmp_path)) for n in nodes])
