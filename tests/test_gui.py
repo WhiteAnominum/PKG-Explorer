@@ -123,3 +123,70 @@ def test_progress_dialog_is_only_touched_from_the_gui_thread(make_pkg, tmp_path,
     with Pkg(path) as pkg:
         assert run_extraction(QWidget(), pkg, [(pkg.find("data"), str(tmp_path))])
     assert calls and all(calls)
+
+
+def _slow_reads(monkeypatch, delay=0.005):
+    """Makes extraction slow enough for actions to happen while it is running."""
+    import time
+
+    from pkg_explorer.pkg import Pkg
+
+    original = Pkg._decode_block
+
+    def slow(self, raw):
+        time.sleep(delay)
+        return original(self, raw)
+
+    monkeypatch.setattr(Pkg, "_decode_block", slow)
+
+
+def test_many_extractions_in_a_row(window, make_pkg, tmp_path):
+    path, _ = make_pkg()
+    window.open_pkg(path)
+    for i in range(30):
+        dest = tmp_path / str(i)
+        assert window._extract([(window.pkg.find("data"), str(dest))])
+        assert (dest / "data/sub/deep/x.txt").read_bytes() == b"hello"
+
+
+def test_closing_during_extraction_cancels_waits_and_closes(
+    window, make_pkg, tmp_path, monkeypatch, app
+):
+    from PySide6.QtCore import QTimer
+
+    path, _ = make_pkg({"big.bin": bytes(range(256)) * 16384})  # 4 MB, 64 blocks
+    window.open_pkg(path)
+    window.show()
+    _slow_reads(monkeypatch)
+    errors = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: errors.append(a))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.Yes)
+
+    QTimer.singleShot(50, window.close)
+    assert not window._extract([(window.pkg.find("big.bin"), str(tmp_path))])  # cancelled
+    app.processEvents()
+
+    assert not errors  # no "seek of closed file" or similar
+    assert not window.isVisible()
+    assert not (tmp_path / "big.bin").exists()  # half-written file removed
+
+
+def test_only_one_extraction_at_a_time(window, make_pkg, tmp_path, monkeypatch):
+    from PySide6.QtCore import QTimer
+
+    path, _ = make_pkg({"big.bin": bytes(range(256)) * 16384})
+    window.open_pkg(path)
+    _slow_reads(monkeypatch)
+    refused = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: refused.append(a[1]))
+    other, _ = make_pkg()
+
+    def meanwhile():
+        refused.append(window._extract([(window.pkg.find("big.bin"), str(tmp_path / "x"))]))
+        window.open_pkg(other)  # must not replace the PKG being read
+
+    QTimer.singleShot(30, meanwhile)
+    assert window._extract([(window.pkg.find("big.bin"), str(tmp_path))])
+    assert refused.count("Please wait") == 2 and False in refused
+    assert window.pkg.path == path
+    assert (tmp_path / "big.bin").stat().st_size == 4 << 20
