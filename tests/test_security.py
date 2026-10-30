@@ -5,6 +5,7 @@ import os
 import random
 import struct
 import zlib
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,9 @@ from pkg_explorer import pkg as pkgmod
 from pkg_explorer.pkg import Node, Pkg, PkgError
 
 
-@pytest.mark.parametrize("name", ["..", ".", "../evil.txt", "/etc/evil", "a/../../b", "a\\b", "nul\0x"])
+@pytest.mark.parametrize(
+    "name", ["..", ".", "../evil.txt", "/etc/evil", "a/../../b", "a\\b", "nul\0x"]
+)
 def test_malicious_names_are_rejected_on_open(make_pkg, name):
     path, _ = make_pkg({"ok.txt": b"ok", name: b"evil"})
     with pytest.raises(PkgError, match="invalid file name"):
@@ -45,7 +48,8 @@ def test_extract_refuses_traversal_even_if_tree_is_bad(tmp_path):
 
 def test_extract_does_not_follow_symlinks_in_destination(tmp_path):
     dest, outside = tmp_path / "dest", tmp_path / "outside"
-    dest.mkdir(); outside.mkdir()
+    dest.mkdir()
+    outside.mkdir()
     (outside / "victim.txt").write_text("original")
     (dest / "link.txt").symlink_to(outside / "victim.txt")
     (dest / "linkdir").symlink_to(outside)
@@ -67,7 +71,7 @@ def test_extract_does_not_follow_symlinks_in_destination(tmp_path):
 
 
 def test_failed_open_does_not_delete_existing_file(tmp_path):
-    # If the destination cannot be opened for writing, whatever is already there must not be deleted.
+    # If the destination cannot be opened for writing, what is already there must not be deleted.
     pkg, root = _fake_pkg_with(["busy"])
     (tmp_path / "busy").mkdir()  # opening a folder as a file fails
     with pytest.raises(OSError):
@@ -94,7 +98,7 @@ def _only_pkg_errors(path):
 
 def test_fuzz_header_and_file(make_pkg, tmp_path):
     path, _ = make_pkg()
-    base = open(path, "rb").read()
+    base = Path(path).read_bytes()
     rng = random.Random(7)
     target = tmp_path / "fuzz.pkg"
     for _ in range(300):
@@ -121,7 +125,9 @@ def test_fuzz_pfs_structures(make_pkg, monkeypatch):
                     pos = rng.randrange(0x400) if rng.random() < 0.5 else rng.randrange(len(data))
                     data[pos] = rng.choice([0, 0xFF, rng.randrange(256)])
                 if rng.random() < 0.3:
-                    struct.pack_into("<q", data, rng.choice([0x30, 0x48]), rng.choice([-1, 0, 2**40, 10**6]))
+                    struct.pack_into(
+                        "<q", data, rng.choice([0x30, 0x48]), rng.choice([-1, 0, 2**40, 10**6])
+                    )
             state["n"] += 1
             return bytes(data)
 
