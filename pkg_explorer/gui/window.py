@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import html
 import os
 import threading
 from pathlib import Path
@@ -29,11 +30,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__, desktop, kde_dnd, shadps4
+from .. import __version__, desktop, integrity, kde_dnd, shadps4
 from ..i18n import _
 from ..pkg import Node, Pkg, PkgError
 from ..util import human_size
-from .extraction import make_temp_dir, run_extraction
+from .extraction import make_temp_dir, run_extraction, run_verification
 from .model import PkgTreeModel, SortProxy
 from .tree import PkgTreeView
 
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.pkg: Pkg | None = None
+        self.integrity: integrity.Result | None = None  # quick check on open, or full check
         self.model: PkgTreeModel | None = None
         self.dragged_nodes: list[Node] = []
         self._extracting = False
@@ -83,6 +85,8 @@ class MainWindow(QMainWindow):
             self,
         )
         self.act_install.triggered.connect(self.install_shadps4)
+        self.act_verify = QAction(_("Verify integrity…"), self)
+        self.act_verify.triggered.connect(self.verify_full)
         self.act_shadps4_folder = QAction(_("shadPS4 folder…"), self)
         self.act_shadps4_folder.triggered.connect(self.choose_shadps4_folder)
         self.act_integrate = QAction(_("Open .pkg files with PKG Explorer"), self)
@@ -102,6 +106,8 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
         menu = QMenu(self)
+        menu.addAction(self.act_verify)
+        menu.addSeparator()
         if desktop.is_supported():
             menu.addAction(self.act_integrate)
             menu.addSeparator()
@@ -159,7 +165,7 @@ class MainWindow(QMainWindow):
         self.set_actions_enabled(False)
 
     def set_actions_enabled(self, enabled: bool) -> None:
-        for act in (self.act_extract, self.act_extract_all, self.act_install):
+        for act in (self.act_extract, self.act_extract_all, self.act_install, self.act_verify):
             act.setEnabled(enabled)
         self.filter_edit.setEnabled(enabled)
 
@@ -204,6 +210,7 @@ class MainWindow(QMainWindow):
         self.tree.selectionModel().selectionChanged.connect(self.update_status)
         self.filter_edit.clear()
 
+        self.integrity = self.quick_check()
         self.update_header()
         self.set_actions_enabled(True)
         self.setWindowTitle(f"{os.path.basename(path)} — PKG Explorer")
@@ -238,7 +245,15 @@ class MainWindow(QMainWindow):
             for k, v in rows
         )
         title = pkg.title or os.path.basename(pkg.path)
-        self.info_label.setText(f"<h3 style='margin:0'>{title}</h3><table>{table}</table>")
+        warning = ""
+        if self.integrity is not None and not self.integrity.ok:
+            parts = ", ".join(integrity.part_label(p) for p in self.integrity.bad)
+            warning = (
+                "<p style='color:#d0342c; margin:4px 0 0 0'>⚠ "
+                + _("Damaged PKG: {parts} does not match.").format(parts=html.escape(parts))
+                + "</p>"
+            )
+        self.info_label.setText(f"<h3 style='margin:0'>{title}</h3><table>{table}</table>{warning}")
 
     def update_status(self, *_args) -> None:
         nodes = self.selected_nodes()
@@ -282,19 +297,23 @@ class MainWindow(QMainWindow):
     # ---- actions ----
 
     def _extract(self, jobs: list[tuple[Node, str]]) -> bool:
-        """Every extraction goes through here: only one at a time, actions disabled meanwhile,
-        and it can be cancelled when the window is closed (see closeEvent)."""
+        return bool(self._run_job(lambda cancel: run_extraction(self, self.pkg, jobs, cancel)))
+
+    def _run_job(self, run):
+        """Every long job (extraction, full check) goes through here: only one at a time,
+        actions disabled meanwhile, and it can be cancelled when the window is closed (see
+        closeEvent). Returns what `run(cancel)` returns, or None if another job is running."""
         if self._extracting:
             QMessageBox.information(
                 self, _("Please wait"), _("An extraction is already in progress.")
             )
-            return False
+            return None
         self._extracting = True
         self._cancel_extraction = threading.Event()
         self.set_actions_enabled(False)
         self.act_open.setEnabled(False)
         try:
-            return run_extraction(self, self.pkg, jobs, self._cancel_extraction)
+            return run(self._cancel_extraction)
         finally:
             self._extracting = False
             self._cancel_extraction = None
@@ -472,6 +491,42 @@ class MainWindow(QMainWindow):
             "<a href='https://github.com/WhiteAnominum/PKG-Explorer'>"
             "github.com/WhiteAnominum/PKG-Explorer</a></p>",
         )
+
+    # ---- integrity (rules in integrity.py) ----
+
+    def quick_check(self) -> integrity.Result | None:
+        try:
+            return integrity.verify(self.pkg)
+        except (PkgError, OSError):
+            return None
+
+    def verify_full(self) -> None:
+        result = self._run_job(lambda cancel: run_verification(self, self.pkg, cancel))
+        if result is None:  # cancelled, failed or busy
+            return
+        self.integrity = result
+        self.update_header()
+        if not result.checked:
+            QMessageBox.information(
+                self, _("Verify integrity"), _("This PKG has no digests to check.")
+            )
+        elif result.ok:
+            QMessageBox.information(
+                self,
+                _("Verify integrity"),
+                _("The PKG is intact: all {count} checked parts match.").format(
+                    count=len(result.checked)
+                ),
+            )
+        else:
+            parts = "\n".join("• " + integrity.part_label(p) for p in result.bad)
+            QMessageBox.warning(
+                self,
+                _("Verify integrity"),
+                _(
+                    "The PKG is damaged. These parts do not match:\n\n{parts}\n\nDownload it again."
+                ).format(parts=parts),
+            )
 
     # ---- installing in shadPS4 (rules in shadps4.py) ----
 
