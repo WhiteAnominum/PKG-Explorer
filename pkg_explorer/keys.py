@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Gerado a partir de src/core/crypto/keys.h do ShadPs4Plus / shadPS4.
+# Generated from src/core/crypto/keys.h of ShadPs4Plus / shadPS4.
 
 FAKE_MODULUS = int(
     "c6cf71e7e59af0d12a2c458bf92a0ec143058bc37117801dcd497dde359d259b"
