@@ -188,19 +188,21 @@ class Pkg:
     # ---- header and entries ----
 
     def _parse_header(self) -> None:
+        """Header fields: docs/FORMAT.md, section 1 (big-endian)."""
         header = self._read(0, 0x1000)
         if struct.unpack_from(">I", header, 0)[0] != PKG_MAGIC:
             raise PkgError(_("this does not look like a valid PKG file"))
 
         self.file_size = os.path.getsize(self.path)
-        self.entry_count = struct.unpack_from(">I", header, 0x10)[0]
-        self.entry_table_offset = struct.unpack_from(">I", header, 0x18)[0]
-        content_offset, content_size = struct.unpack_from(">QQ", header, 0x30)
+        self.entry_count = struct.unpack_from(">I", header, 0x10)[0]  # entry count
+        self.entry_table_offset = struct.unpack_from(">I", header, 0x18)[0]  # entry table offset
+        content_offset, content_size = struct.unpack_from(">QQ", header, 0x30)  # content offset/size
         self.content_id = header[0x40:0x64].rstrip(b"\x00").decode("ascii", "replace")
-        self.title_id = header[0x47:0x50].decode("ascii", "replace")
-        self.content_flags = struct.unpack_from(">I", header, 0x78)[0]
+        self.title_id = header[0x47:0x50].decode("ascii", "replace")  # content ID chars 7..15
+        self.content_flags = struct.unpack_from(">I", header, 0x78)[0]  # content flags
+        # PFS image offset/size
         self.pfs_image_offset, self.pfs_image_size = struct.unpack_from(">QQ", header, 0x410)
-        self.pkg_size = struct.unpack_from(">Q", header, 0x430)[0]
+        self.pkg_size = struct.unpack_from(">Q", header, 0x430)[0]  # package size
 
         if self.pkg_size > self.file_size:
             raise PkgError(
@@ -216,6 +218,7 @@ class Pkg:
         self.flags = [name for bit, name in CONTENT_FLAGS if self.content_flags & bit]
 
     def _parse_entries(self) -> None:
+        """Entry table: docs/FORMAT.md, section 2."""
         table = self._read(self.entry_table_offset, self.entry_count * 32)
         self.entries: list[PkgEntry] = []
         for i in range(self.entry_count):
@@ -268,6 +271,7 @@ class Pkg:
     # ---- keys ----
 
     def _derive_keys(self) -> None:
+        """DK3 -> EKPFS -> PFS data/tweak keys: docs/FORMAT.md, section 3."""
         keys_entry = self._entry_by_id(0x10)
         image_entry = self._entry_by_id(0x20)
         if keys_entry is None or image_entry is None:
@@ -285,7 +289,7 @@ class Pkg:
                 _("could not decrypt the PKG keys (only fake/fpkg PKGs are supported)")
             ) from exc
 
-        seed = self._read(self.pfs_image_offset + 0x370, 16)
+        seed = self._read(self.pfs_image_offset + 0x370, 16)  # PFS seed (plaintext)
         data_key, tweak_key = crypto.pfs_gen_crypto_key(ekpfs, seed)
         self._pfs = crypto.PfsDecryptor(data_key, tweak_key)
 
@@ -319,6 +323,7 @@ class Pkg:
         return data[offset - start : offset - start + size]
 
     def _open_pfs(self) -> None:
+        """Finds the PFSC and reads its sector map: docs/FORMAT.md, section 4."""
         for offset in range(0x20000, min(self.pfs_image_size, PFSC_SEARCH_LIMIT), 0x10000):
             if self._read_pfs(offset, 16)[:4] == PFSC_MAGIC:
                 self._pfsc_offset = offset
@@ -327,6 +332,7 @@ class Pkg:
             raise PkgError(_("PFSC image not found inside the PKG"))
 
         hdr = self._read_pfs(self._pfsc_offset, 0x30)
+        # block size, sector map offset, data start, data length
         self._block_size, block_offsets, _data_start, data_length = struct.unpack_from(
             "<qqQq", hdr, 0x10
         )
@@ -386,9 +392,10 @@ class Pkg:
         return data
 
     def _read_inodes(self) -> list[Inode]:
+        """Superblock and inode table: docs/FORMAT.md, section 5."""
         superblock = self._read_block(0)
-        inode_count = struct.unpack_from("<q", superblock, 0x30)[0]
-        self._superroot_ino = struct.unpack_from("<q", superblock, 0x48)[0]
+        inode_count = struct.unpack_from("<q", superblock, 0x30)[0]  # inode count
+        self._superroot_ino = struct.unpack_from("<q", superblock, 0x48)[0]  # superroot inode
         per_block = self._block_size // INODE_SIZE
         if not 0 < inode_count <= min(MAX_INODES, per_block * (self.num_blocks - 1)):
             raise _corrupt(f"invalid inode count ({inode_count})")
@@ -402,14 +409,15 @@ class Pkg:
             for p in range(0, per_block * INODE_SIZE, INODE_SIZE):
                 if len(inodes) == inode_count:
                     break
-                mode, _nlink, flags, size = struct.unpack_from("<HHIq", data, p)
-                blocks, loc = struct.unpack_from("<II", data, p + 0x60)
+                mode, _nlink, flags, size = struct.unpack_from("<HHIq", data, p)  # mode, flags, size
+                blocks, loc = struct.unpack_from("<II", data, p + 0x60)  # number of blocks, first block
                 inodes.append(Inode(mode, flags, size, blocks, loc))
             block += 1
         return inodes
 
     def _read_dir(self, inode: Inode) -> list[tuple[str, int, int]]:
-        """Lists (name, inode number, type) of a directory, without '.' and '..'."""
+        """Lists (name, inode number, type) of a directory, without '.' and '..'.
+        Directory entry layout: docs/FORMAT.md, section 5."""
         result = []
         for b in range(inode.loc, inode.loc + inode.blocks):
             data = self._read_block(b)
