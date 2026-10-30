@@ -10,7 +10,7 @@ org.kde.ark.DndExtract.extractSelectedFilesTo(folder) here, and we extract into 
 from __future__ import annotations
 
 import os
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import ClassInfo, QMimeData, QObject, QTimer, QUrl, Slot
 from PySide6.QtDBus import QDBusConnection
@@ -21,7 +21,9 @@ OBJECT_PATH = f"/DndExtract/{os.getpid()}"
 
 
 def is_available() -> bool:
-    if os.environ.get("PKG_EXPLORER_DND") == "temp":  # forces the temporary-folder mode (for testing)
+    if (
+        os.environ.get("PKG_EXPLORER_DND") == "temp"
+    ):  # forces the temporary-folder mode (for testing)
         return False
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper().split(":")
     return "KDE" in desktop and QDBusConnection.sessionBus().isConnected()
