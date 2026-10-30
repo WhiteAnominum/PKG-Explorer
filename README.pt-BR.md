@@ -130,6 +130,18 @@ soltar". O KDE tem um protocolo próprio (o mesmo usado pelo Ark), que o PKG Exp
 Fora do KDE, para arquivos grandes, prefira o botão **Extrair selecionados…**, que grava direto
 na pasta escolhida.
 
+## Desenvolvimento
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -e ".[test]"
+.venv/bin/pytest
+```
+
+Os testes não precisam de nenhum jogo: `tests/pkgbuilder.py` gera PKGs fake sintéticos
+(criptografados como os reais) com o conteúdo que cada teste precisa, inclusive maliciosos e
+malformados. Eles rodam no GitHub Actions a cada push, e uma Release só é gerada se passarem.
+
 ## Aviso legal
 
 O PKG Explorer é uma ferramenta para inspecionar e extrair pacotes de PS4 que você tem direito de
