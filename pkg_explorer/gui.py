@@ -625,7 +625,7 @@ class MainWindow(QMainWindow):
 
     def ask_integration(self) -> None:
         """Pergunta (uma vez só) se arquivos .pkg devem abrir com este programa. Usado no
-        AppImage, que não tem instalação: no Flatpak a associação vem do próprio pacote."""
+        AppImage e no Flatpak (ver desktop.py)."""
         settings = QSettings()
         if settings.value("integration/asked", False, bool):
             return
@@ -634,10 +634,8 @@ class MainWindow(QMainWindow):
         box.setIcon(QMessageBox.Question)
         box.setWindowTitle("Abrir arquivos .pkg")
         box.setText("Quer que arquivos .pkg de PS4 abram com o PKG Explorer ao dar duplo clique?")
-        box.setInformativeText(
-            "Também cria um atalho no menu de aplicativos. Dá para mudar isso depois no "
-            "menu ☰ da janela."
-        )
+        extra = "" if desktop.in_flatpak() else "Também cria um atalho no menu de aplicativos. "
+        box.setInformativeText(f"{extra}Dá para mudar isso depois no menu ☰ da janela.")
         yes = box.addButton("Sim", QMessageBox.YesRole)
         box.addButton("Agora não", QMessageBox.NoRole)
         box.exec()
@@ -689,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
         pass
     window = MainWindow()
     window.show()
-    if desktop.is_supported() and desktop.is_appimage() and not desktop.is_installed():
+    if desktop.should_ask_on_first_run():
         QTimer.singleShot(0, window.ask_integration)
     if len(argv) > 1:
         window.open_pkg(argv[1])
