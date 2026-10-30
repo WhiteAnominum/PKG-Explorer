@@ -166,3 +166,32 @@ write outside the chosen folder. Besides the size checks mentioned above, `pkg.p
 - entries are read in chunks, `param.sfo` and NP entries have size limits.
 
 The limits are defined at the top of `pkg.py`.
+
+## 7. Digests (integrity check)
+
+The header stores SHA-256 digests that, together, cover the whole package. They are not used by
+shadPS4; PKG Explorer checks them in `pkg_explorer/integrity.py`. The rules below were confirmed
+against real fake PKGs (game, update and DLCs); an all-zero field means "not filled in".
+
+| Header offset | Digest of |
+|---|---|
+| 0x020 / 0x028 | (body offset / body size, 8 bytes each: the region holding the entry table and all entries) |
+| 0x140 | the `digests` entry (`0x0001`) |
+| 0x160 | the body: `[body offset, + body size)` |
+| 0x438 | (PFS signed size, 4 bytes) |
+| 0x440 | the whole PFS image: `[PFS image offset, + PFS image size)` |
+| 0x460 | the start of the PFS image: its first `PFS signed size` bytes |
+| 0xFE0 | the header itself, bytes `0x000..0xFE0` |
+
+The `digests` entry holds one SHA-256 per entry, in entry table order (its own slot is zero). An
+entry is hashed as stored in the file (encrypted entries are not decrypted); entries with bit 31
+of `flags 1` set (encrypted) are hashed with their size rounded up to 16 bytes, the padding of
+the last AES block.
+
+The fields at 0x100 and 0x120 also look like digests but their input is unknown; they are not
+checked. The body ends where the PFS image starts, so the header, body and PFS image digests
+leave nothing out except the rest of the 0x1000-byte header area (0xFE0–0x1000 holds the header
+digest itself).
+
+The **quick check** (run when a PKG is opened) checks everything except the whole PFS image, so
+it is instant. The **full check** also hashes the PFS image, which means reading the whole file.
