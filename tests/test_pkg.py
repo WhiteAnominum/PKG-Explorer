@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Leitura e extração de PKGs (gerados por pkgbuilder.py)."""
+
+import os
+import threading
+
+import pytest
+from conftest import files_of, sample_tree
+
+from pkg_explorer.pkg import ExtractionCancelled, Pkg, PkgError
+
+
+@pytest.mark.parametrize("compress", [True, False])
+def test_tree_and_contents(make_pkg, compress):
+    tree = sample_tree()
+    path, _ = make_pkg(tree, compress=compress)
+    with Pkg(path) as pkg:
+        expected = files_of(tree)
+        got = {n.path: n for n in pkg.root.walk() if not n.is_dir and not n.path.startswith("sce_sys/")}
+        assert set(got) == set(expected)
+        for name, data in expected.items():
+            assert got[name].size == len(data)
+            assert pkg.read_file(got[name]) == data
+        assert pkg.find("emptydir").is_dir and not pkg.find("emptydir").children
+        assert pkg.find("data").total_size() == sum(len(v) for k, v in expected.items() if k.startswith("data/"))
+
+
+def test_metadata(make_pkg):
+    path, _ = make_pkg()
+    with Pkg(path) as pkg:
+        assert pkg.title == "Test Package"
+        assert pkg.title_id == "TEST00001"
+        assert pkg.content_id == "UP0000-TEST00001_00-PKGEXPLORERTEST1"
+        assert pkg.kind == "game"
+        assert pkg.output_folder_name == "TEST00001"
+
+
+def test_kind_patch_and_dlc(make_pkg):
+    path, _ = make_pkg(content_flags=0x40000000)  # SUBSEQUENT_PATCH
+    with Pkg(path) as pkg:
+        assert pkg.kind == "patch" and pkg.output_folder_name == "TEST00001-patch"
+    path, _ = make_pkg(sfo={"TITLE": "DLC", "CATEGORY": "ac", "CONTENT_ID": "UP0000-TEST00001_00-MYDLC0000000001"})
+    with Pkg(path) as pkg:
+        assert pkg.kind == "dlc" and pkg.output_folder_name == os.path.join("TEST00001", "MYDLC0000000001")
+
+
+def test_sce_sys_entries(make_pkg):
+    # 532 bytes: não é múltiplo de 16 (o extrator original errava os últimos bytes nesse caso).
+    np_data = bytes(range(256)) * 2 + b"tail-of-npbind-like-data"
+    path, plain = make_pkg(np_data=np_data, icon=b"\x89PNG\r\n\x1a\nfake")
+    with Pkg(path) as pkg:
+        assert pkg.read_file(pkg.find("sce_sys/license.dat")) == np_data
+        assert pkg.read_file(pkg.find("sce_sys/icon0.png")) == plain["icon0.png"]
+        assert pkg.read_file(pkg.find("sce_sys/param.sfo")) == plain["param.sfo"]
+
+
+def test_many_files_and_large_directory(make_pkg):
+    # >390 arquivos ocupam mais de um bloco de inodes; nomes longos fazem o diretório passar de 64 KB.
+    tree = {"many": {f"file_{i:04d}_{'x' * 40}.dat": i.to_bytes(4, "little") for i in range(1500)}}
+    path, _ = make_pkg(tree)
+    with Pkg(path) as pkg:
+        many = pkg.find("many")
+        assert len(many.children) == 1500
+        assert pkg.read_file(many.children[f"file_1499_{'x' * 40}.dat"]) == (1499).to_bytes(4, "little")
+
+
+def test_extract_file_folder_and_all(make_pkg, tmp_path):
+    tree = sample_tree()
+    path, _ = make_pkg(tree)
+    with Pkg(path) as pkg:
+        out = tmp_path / "out"
+        assert pkg.extract(pkg.find("eboot.bin"), out) == str(out / "eboot.bin")
+        assert (out / "eboot.bin").read_bytes() == tree["eboot.bin"]
+        pkg.extract(pkg.find("data"), out)
+        assert (out / "data/sub/deep/x.txt").read_bytes() == b"hello"
+        assert (out / "data/empty.txt").read_bytes() == b""
+
+        everything = tmp_path / "all"
+        written = []
+        pkg.extract(pkg.root, everything, progress=written.append)
+        for name, data in files_of(tree).items():
+            assert (everything / name).read_bytes() == data
+        assert (everything / "sce_sys/param.sfo").exists()
+        assert (everything / "emptydir").is_dir()
+        assert sum(written) == pkg.root.total_size()
+
+
+def test_cancel_removes_partial_file(make_pkg, tmp_path):
+    path, _ = make_pkg()
+    with Pkg(path) as pkg:
+        cancel = threading.Event()
+        cancel.set()
+        with pytest.raises(ExtractionCancelled):
+            pkg.extract(pkg.find("data/big.bin"), tmp_path, cancel=cancel)
+        assert not (tmp_path / "big.bin").exists()
+
+
+def test_not_a_pkg(tmp_path):
+    bad = tmp_path / "x.pkg"
+    bad.write_bytes(b"not a pkg" * 1000)
+    with pytest.raises(PkgError, match="does not look like a valid PKG"):
+        Pkg(bad)
+
+
+def test_truncated_pkg(make_pkg, tmp_path):
+    path, _ = make_pkg()
+    data = open(path, "rb").read()
+    short = tmp_path / "short.pkg"
+    short.write_bytes(data[: len(data) // 2])
+    with pytest.raises(PkgError):
+        Pkg(short)
