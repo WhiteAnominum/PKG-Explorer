@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import os
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import QModelIndex, QSettings, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QPixmap
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -27,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__, desktop, kde_dnd
+from .. import __version__, desktop, kde_dnd, shadps4
 from ..i18n import _
 from ..pkg import Node, Pkg, PkgError
 from ..util import human_size
@@ -75,6 +77,14 @@ class MainWindow(QMainWindow):
             style.standardIcon(QStyle.SP_DirIcon), _("Extract all…"), self
         )
         self.act_extract_all.triggered.connect(self.extract_all)
+        self.act_install = QAction(
+            QIcon.fromTheme("run-install", style.standardIcon(QStyle.SP_ArrowDown)),
+            _("Install in shadPS4"),
+            self,
+        )
+        self.act_install.triggered.connect(self.install_shadps4)
+        self.act_shadps4_folder = QAction(_("shadPS4 folder…"), self)
+        self.act_shadps4_folder.triggered.connect(self.choose_shadps4_folder)
         self.act_integrate = QAction(_("Open .pkg files with PKG Explorer"), self)
         self.act_integrate.setCheckable(True)
         self.act_integrate.setChecked(desktop.is_installed())
@@ -85,7 +95,9 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar(_("Main"))
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        toolbar.addActions([self.act_open, self.act_extract, self.act_extract_all])
+        toolbar.addActions(
+            [self.act_open, self.act_extract, self.act_extract_all, self.act_install]
+        )
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
@@ -93,6 +105,8 @@ class MainWindow(QMainWindow):
         if desktop.is_supported():
             menu.addAction(self.act_integrate)
             menu.addSeparator()
+        menu.addAction(self.act_shadps4_folder)
+        menu.addSeparator()
         menu.addAction(self.act_about)
         menu_button = QToolButton()
         if QIcon.hasThemeIcon("application-menu"):
@@ -145,7 +159,7 @@ class MainWindow(QMainWindow):
         self.set_actions_enabled(False)
 
     def set_actions_enabled(self, enabled: bool) -> None:
-        for act in (self.act_extract, self.act_extract_all):
+        for act in (self.act_extract, self.act_extract_all, self.act_install):
             act.setEnabled(enabled)
         self.filter_edit.setEnabled(enabled)
 
@@ -458,6 +472,114 @@ class MainWindow(QMainWindow):
             "<a href='https://github.com/WhiteAnominum/PKG-Explorer'>"
             "github.com/WhiteAnominum/PKG-Explorer</a></p>",
         )
+
+    # ---- installing in shadPS4 (rules in shadps4.py) ----
+
+    def shadps4_config(self) -> shadps4.Shadps4Config | None:
+        """shadPS4's settings, found automatically or in the folder chosen in the ☰ menu."""
+        user_dir = shadps4.find_user_dir(QSettings().value("shadps4/user_dir", "", str))
+        if user_dir is None:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Information)
+            box.setWindowTitle(_("Install in shadPS4"))
+            box.setText(_("shadPS4's settings were not found."))
+            box.setInformativeText(
+                _(
+                    "Open shadPS4 at least once, or choose its user folder (the one with "
+                    'config.json, e.g. the "user" folder of a portable shadPS4).'
+                )
+            )
+            choose = box.addButton(_("Choose folder…"), QMessageBox.AcceptRole)
+            box.addButton(QMessageBox.Cancel)
+            box.exec()
+            if box.clickedButton() is not choose or not self.choose_shadps4_folder():
+                return None
+            user_dir = shadps4.find_user_dir(QSettings().value("shadps4/user_dir", "", str))
+        try:
+            return shadps4.load_config(user_dir)
+        except shadps4.Shadps4Error as exc:
+            QMessageBox.critical(self, _("Could not read shadPS4's settings"), str(exc))
+            return None
+
+    def choose_shadps4_folder(self) -> bool:
+        settings = QSettings()
+        current = settings.value("shadps4/user_dir", "", str) or str(
+            shadps4.find_user_dir() or Path.home()
+        )
+        folder = QFileDialog.getExistingDirectory(
+            self, _("shadPS4 user folder (with config.json)"), current
+        )
+        if not folder:
+            return False
+        if shadps4.find_user_dir(folder) is None:
+            QMessageBox.warning(
+                self,
+                _("shadPS4 folder"),
+                _("There is no config.json in {path}.").format(path=folder),
+            )
+            return False
+        settings.setValue("shadps4/user_dir", folder)
+        self.statusBar().showMessage(_("shadPS4 folder: {path}").format(path=folder), 8000)
+        return True
+
+    def install_shadps4(self) -> None:
+        pkg = self.pkg
+        config = self.shadps4_config()
+        if config is None:
+            return
+        if pkg.kind != "dlc" and not config.install_dirs:
+            QMessageBox.information(
+                self,
+                _("Install in shadPS4"),
+                _("shadPS4 has no game folder yet. Add one in shadPS4's settings first."),
+            )
+            return
+        plan = shadps4.plan_install(pkg, config)
+        if plan.choices:
+            names = [str(d) for d in plan.choices]
+            folder, ok = QInputDialog.getItem(
+                self, _("Install in shadPS4"), _("Game folder:"), names, 0, False
+            )
+            if not ok:
+                return
+            plan = shadps4.with_game_folder(plan, Path(folder))
+
+        version = str(pkg.sfo.get("APP_VER") or pkg.sfo.get("VERSION") or "")
+        notes = [_("Folder:") + f"\n{plan.target}"]
+        if plan.kind != "game" and plan.base_game is None:
+            notes.append(
+                _("The base game {title_id} was not found in shadPS4's game folders.").format(
+                    title_id=pkg.title_id
+                )
+            )
+        if plan.target.exists():
+            if plan.installed_version and version and version < plan.installed_version:
+                notes.append(
+                    _("Version {old} is installed, which is newer than this one ({new}).").format(
+                        old=plan.installed_version, new=version
+                    )
+                )
+            notes.append(_("The folder already exists: files with the same name will be replaced."))
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle(_("Install in shadPS4"))
+        what = KIND_LABELS.get(plan.kind, plan.kind) + (f" {version}" if version else "")
+        box.setText(
+            _("Install {title} ({what}) in shadPS4?").format(
+                title=pkg.title or pkg.title_id, what=what
+            )
+        )
+        box.setInformativeText("\n\n".join(notes))
+        install = box.addButton(_("Install"), QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.exec()
+        if box.clickedButton() is not install:
+            return
+        if self._extract([(pkg.root, str(plan.target))]):
+            self.statusBar().showMessage(
+                _("Installed in shadPS4: {path}").format(path=plan.target), 8000
+            )
 
     # ---- dropping a .pkg onto the window ----
 
