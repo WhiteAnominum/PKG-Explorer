@@ -5,6 +5,8 @@
 A graphical tool to browse the contents of PS4 `.pkg` files as if they were an archive
 (zip/tar.gz) and extract only the files or folders you want.
 
+![PKG Explorer main window](docs/screenshot.png)
+
 - Opens a PKG in under a second, even when it is tens of GB: only the structure is read.
 - Shows the game icon, title, Title ID, type (base game, update or DLC) and version.
 - Extract selected files or folders, or the whole package (using the same folder layout as
