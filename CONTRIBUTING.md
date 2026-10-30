@@ -63,12 +63,13 @@ the offsets and structures the code refers to.
   must validate them (see `check_name`, `_safe_target` and the limits at the top of `pkg.py`)
   and raise `PkgError` instead of crashing. `tests/test_security.py` has examples, including
   fuzzing.
-- **Qt threads:** widgets may only be used from the GUI thread. Connect worker signals to
-  slots of `QObject`s that live in the GUI thread (see `_DialogBridge` in `gui/extraction.py`),
-  never to lambdas or plain functions: Qt would call them in the worker thread, which crashes at
-  random and without any warning. Start extractions only through `MainWindow._extract`, which
-  allows one at a time and cancels and waits for the worker before the window closes.
-  `tests/test_threads.py` checks these rules, and the tests fail on any Qt thread warning.
+- **Qt threads:** Qt objects are only created and used in the GUI thread. The extraction runs in
+  a plain Python thread that never touches Qt: it only updates an `ExtractionState`, which the GUI
+  thread polls with a timer (see `gui/extraction.py`). Do not use `QThread` or cross-thread
+  signals; Qt objects used from another thread crash at random, often without any warning. Start
+  extractions only through `MainWindow._extract`, which allows one at a time and cancels and
+  waits for the worker before the window closes. `tests/test_threads.py` checks these rules, and
+  the tests fail on any Qt thread warning.
 - **Generated files:** do not edit `keys.py` or `entry_names.py` by hand; regenerate them with
   `python3 tools/gen_tables.py <path to a shadPS4Plus checkout>`.
 
