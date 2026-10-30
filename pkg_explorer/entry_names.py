@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Generated from src/core/file_format/pkg_type.cpp of ShadPs4Plus / shadPS4.
+# Generated from src/core/file_format/pkg_type.cpp of ShadPs4Plus / shadPS4 by tools/gen_tables.py. Do not edit.
 
 ENTRY_NAMES = {
     0x0001: "digests",
