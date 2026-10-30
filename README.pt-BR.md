@@ -5,6 +5,8 @@
 Interface gráfica para navegar pelo conteúdo de arquivos `.pkg` de PS4 como se fossem um
 arquivo compactado (zip/tar.gz) e extrair apenas os arquivos ou pastas desejados.
 
+![Janela principal do PKG Explorer](docs/screenshot.png)
+
 - Abre o PKG em menos de um segundo, mesmo com dezenas de GB: só a estrutura é lida.
 - Mostra o ícone, título, Title ID, tipo (jogo base, atualização ou DLC) e versão.
 - Extraia arquivos ou pastas selecionados, ou o pacote inteiro (na mesma estrutura de pastas
