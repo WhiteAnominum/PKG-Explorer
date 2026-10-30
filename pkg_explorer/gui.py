@@ -13,6 +13,8 @@ import threading
 from PySide6.QtCore import (
     QAbstractItemModel,
     QEventLoop,
+    QLibraryInfo,
+    QLocale,
     QMimeData,
     QModelIndex,
     QObject,
@@ -21,6 +23,7 @@ from PySide6.QtCore import (
     Qt,
     QThread,
     QTimer,
+    QTranslator,
     QUrl,
     Signal,
 )
@@ -49,13 +52,14 @@ from PySide6.QtWidgets import (
 
 from . import __version__, desktop, kde_dnd
 from .cli import human_size
+from .i18n import LANGUAGE, _
 from .pkg import ExtractionCancelled, Node, Pkg, PkgError
 
 # Arrastar para fora e abrir com duplo clique extraem para uma pasta temporária primeiro;
 # acima deste tamanho pedimos confirmação.
 LARGE_TEMP_EXTRACT = 512 * 1024 * 1024
 
-KIND_LABELS = {"game": "Jogo base", "patch": "Atualização", "dlc": "DLC"}
+KIND_LABELS = {"game": _("Game"), "patch": _("Update"), "dlc": "DLC"}
 
 _temp_dirs: list[str] = []
 
@@ -76,7 +80,7 @@ def make_temp_dir() -> str:
 
 
 class PkgTreeModel(QAbstractItemModel):
-    COLUMNS = ("Nome", "Tamanho", "Tipo")
+    COLUMNS = (_("Name"), _("Size"), _("Type"))
     SORT_ROLE = Qt.UserRole + 1
 
     def __init__(self, root: Node, parent: QObject | None = None):
@@ -150,9 +154,9 @@ class PkgTreeModel(QAbstractItemModel):
                 return human_size(self._size(node))
             if col == 2:
                 if node.is_dir:
-                    return "Pasta"
+                    return _("Folder")
                 ext = os.path.splitext(node.name)[1].lstrip(".").upper()
-                return f"Arquivo {ext}" if ext else "Arquivo"
+                return _("{ext} file").format(ext=ext) if ext else _("File")
         elif role == Qt.DecorationRole and col == 0:
             return self._dir_icon if node.is_dir else self._file_icon
         elif role == Qt.TextAlignmentRole and col == 1:
@@ -208,7 +212,7 @@ class ExtractWorker(QObject):
     def run(self) -> None:
         try:
             for node, dest in self.jobs:
-                self.current.emit(node.path or "(tudo)")
+                self.current.emit(node.path or _("(everything)"))
                 self.pkg.extract(node, dest, self._on_chunk, self.cancel)
         except ExtractionCancelled:
             self.done.emit(False, "")
@@ -224,8 +228,8 @@ def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> b
     thread = QThread(parent)
     worker.moveToThread(thread)
 
-    dialog = QProgressDialog("Extraindo…", "Cancelar", 0, 1000, parent)
-    dialog.setWindowTitle("Extraindo")
+    dialog = QProgressDialog(_("Extracting…"), _("Cancel"), 0, 1000, parent)
+    dialog.setWindowTitle(_("Extracting"))
     dialog.setWindowModality(Qt.WindowModal)
     dialog.setMinimumDuration(300)
     dialog.setMinimumWidth(480)
@@ -241,7 +245,7 @@ def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> b
         thread.quit()
 
     worker.progress.connect(dialog.setValue)
-    worker.current.connect(lambda path: dialog.setLabelText(f"Extraindo:\n{path}"))
+    worker.current.connect(lambda path: dialog.setLabelText(_("Extracting:\n{path}").format(path=path)))
     worker.done.connect(finished)
     thread.started.connect(worker.run)
     thread.finished.connect(loop.quit)
@@ -251,7 +255,7 @@ def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> b
     thread.wait()
 
     if result.get("error"):
-        QMessageBox.critical(parent, "Erro na extração", result["error"])
+        QMessageBox.critical(parent, _("Extraction error"), result["error"])
     return bool(result.get("ok"))
 
 
@@ -317,26 +321,26 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         style = self.style()
-        self.act_open = QAction(style.standardIcon(QStyle.SP_DialogOpenButton), "Abrir PKG…", self)
+        self.act_open = QAction(style.standardIcon(QStyle.SP_DialogOpenButton), _("Open PKG…"), self)
         self.act_open.setShortcut(QKeySequence.Open)
         self.act_open.triggered.connect(self.choose_pkg)
         self.act_extract = QAction(
-            style.standardIcon(QStyle.SP_DialogSaveButton), "Extrair selecionados…", self
+            style.standardIcon(QStyle.SP_DialogSaveButton), _("Extract selected…"), self
         )
         self.act_extract.setShortcut("Ctrl+E")
         self.act_extract.triggered.connect(self.extract_selected)
         self.act_extract_all = QAction(
-            style.standardIcon(QStyle.SP_DirIcon), "Extrair tudo…", self
+            style.standardIcon(QStyle.SP_DirIcon), _("Extract all…"), self
         )
         self.act_extract_all.triggered.connect(self.extract_all)
-        self.act_integrate = QAction("Abrir arquivos .pkg com o PKG Explorer", self)
+        self.act_integrate = QAction(_("Open .pkg files with PKG Explorer"), self)
         self.act_integrate.setCheckable(True)
         self.act_integrate.setChecked(desktop.is_installed())
         self.act_integrate.toggled.connect(self.toggle_integration)
-        self.act_about = QAction("Sobre", self)
+        self.act_about = QAction(_("About"), self)
         self.act_about.triggered.connect(self.about)
 
-        toolbar = QToolBar("Principal")
+        toolbar = QToolBar(_("Main"))
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         toolbar.addActions([self.act_open, self.act_extract, self.act_extract_all])
@@ -349,7 +353,10 @@ class MainWindow(QMainWindow):
             menu.addSeparator()
         menu.addAction(self.act_about)
         menu_button = QToolButton()
-        menu_button.setIcon(QIcon.fromTheme("application-menu", style.standardIcon(QStyle.SP_TitleBarMenuButton)))
+        if QIcon.hasThemeIcon("application-menu"):
+            menu_button.setIcon(QIcon.fromTheme("application-menu"))
+        else:  # sem tema de ícones (ex.: AppImage fora do KDE) o ícone padrão do Qt é o logo dele
+            menu_button.setText("☰")
         menu_button.setToolTip("Menu")
         menu_button.setPopupMode(QToolButton.InstantPopup)
         menu_button.setMenu(menu)
@@ -368,7 +375,7 @@ class MainWindow(QMainWindow):
         header.addWidget(self.info_label, 1)
 
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Filtrar por nome…")
+        self.filter_edit.setPlaceholderText(_("Filter by name…"))
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self.apply_filter)
 
@@ -391,7 +398,7 @@ class MainWindow(QMainWindow):
     def show_placeholder(self) -> None:
         self.icon_label.hide()
         self.info_label.setText(
-            "<h3>Nenhum PKG aberto</h3>Use <b>Abrir PKG…</b> ou arraste um arquivo .pkg para cá."
+            _("<h3>No PKG open</h3>Use <b>Open PKG…</b> or drag a .pkg file here.")
         )
         self.set_actions_enabled(False)
 
@@ -402,8 +409,8 @@ class MainWindow(QMainWindow):
 
     def choose_pkg(self) -> None:
         start = os.path.dirname(self.pkg.path) if self.pkg else ""
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir PKG", start, "Pacotes PS4 (*.pkg *.PKG);;Todos os arquivos (*)"
+        path, _filter = QFileDialog.getOpenFileName(
+            self, _("Open PKG"), start, _("PS4 packages (*.pkg *.PKG);;All files (*)")
         )
         if path:
             self.open_pkg(path)
@@ -414,7 +421,7 @@ class MainWindow(QMainWindow):
             pkg = Pkg(path)
         except (PkgError, OSError) as exc:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Não foi possível abrir", f"{os.path.basename(path)}\n\n{exc}")
+            QMessageBox.critical(self, _("Could not open"), f"{os.path.basename(path)}\n\n{exc}")
             return
         QApplication.restoreOverrideCursor()
 
@@ -457,10 +464,11 @@ class MainWindow(QMainWindow):
         files = [n for n in pkg.root.walk() if not n.is_dir]
         rows = [
             ("Title ID", pkg.title_id),
-            ("Tipo", KIND_LABELS.get(pkg.kind, pkg.kind)),
-            ("Versão", version),
+            (_("Type"), KIND_LABELS.get(pkg.kind, pkg.kind)),
+            (_("Version"), version),
             ("Content ID", pkg.content_id),
-            ("Conteúdo", f"{len(files)} arquivos, {human_size(sum(n.size for n in files))}"),
+            (_("Contents"), _("{count} files, {size}").format(
+                count=len(files), size=human_size(sum(n.size for n in files)))),
         ]
         table = "".join(
             f"<tr><td style='padding-right:12px; color:gray'>{k}</td><td>{v}</td></tr>"
@@ -473,7 +481,9 @@ class MainWindow(QMainWindow):
         nodes = self.selected_nodes()
         if nodes:
             size = sum(n.total_size() for n in nodes)
-            self.statusBar().showMessage(f"{len(nodes)} item(ns) selecionado(s), {human_size(size)}")
+            self.statusBar().showMessage(
+                _("{count} item(s) selected, {size}").format(count=len(nodes), size=human_size(size))
+            )
         else:
             self.statusBar().showMessage(self.pkg.path if self.pkg else "")
 
@@ -513,8 +523,8 @@ class MainWindow(QMainWindow):
         names = "\n".join(existing[:10]) + ("\n…" if len(existing) > 10 else "")
         answer = QMessageBox.question(
             self,
-            "Substituir?",
-            f"Já existe(m) em {dest}:\n\n{names}\n\nSubstituir?",
+            _("Replace?"),
+            _("Already exists in {dest}:\n\n{names}\n\nReplace?").format(dest=dest, names=names),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -522,32 +532,35 @@ class MainWindow(QMainWindow):
 
     def extract_nodes(self, nodes: list[Node]) -> None:
         if not nodes:
-            QMessageBox.information(self, "Extrair", "Selecione um ou mais arquivos ou pastas.")
+            QMessageBox.information(self, _("Extract"), _("Select one or more files or folders."))
             return
-        dest = QFileDialog.getExistingDirectory(self, "Extrair para…", os.path.dirname(self.pkg.path))
+        dest = QFileDialog.getExistingDirectory(self, _("Extract to…"), os.path.dirname(self.pkg.path))
         if not dest or not self.confirm_overwrite(nodes, dest):
             return
         if run_extraction(self, self.pkg, [(n, dest) for n in nodes]):
-            self.statusBar().showMessage(f"Extraído para {dest}", 8000)
+            self.statusBar().showMessage(_("Extracted to {path}").format(path=dest), 8000)
 
     def extract_selected(self) -> None:
         self.extract_nodes(self.selected_nodes())
 
     def extract_all(self) -> None:
-        dest = QFileDialog.getExistingDirectory(self, "Extrair tudo para…", os.path.dirname(self.pkg.path))
+        dest = QFileDialog.getExistingDirectory(
+            self, _("Extract all to…"), os.path.dirname(self.pkg.path)
+        )
         if not dest:
             return
         target = os.path.join(dest, self.pkg.output_folder_name)
         if os.path.exists(target):
             answer = QMessageBox.question(
-                self, "Pasta já existe",
-                f"{target}\n\njá existe. Extrair por cima (arquivos com o mesmo nome serão substituídos)?",
+                self, _("Folder already exists"),
+                _("{path}\n\nalready exists. Extract over it (files with the same name will be "
+                  "replaced)?").format(path=target),
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
             )
             if answer != QMessageBox.Yes:
                 return
         if run_extraction(self, self.pkg, [(self.pkg.root, target)]):
-            self.statusBar().showMessage(f"Extraído para {target}", 8000)
+            self.statusBar().showMessage(_("Extracted to {path}").format(path=target), 8000)
             QDesktopServices.openUrl(QUrl.fromLocalFile(target))
 
     def extract_dropped(self, dest: str) -> None:
@@ -556,12 +569,12 @@ class MainWindow(QMainWindow):
         if not nodes or self.pkg is None:
             return
         if self._extracting:
-            QMessageBox.information(self, "Aguarde", "Já existe uma extração em andamento.")
+            QMessageBox.information(self, _("Please wait"), _("An extraction is already in progress."))
             return
         if not os.path.isdir(dest):
             QMessageBox.warning(
-                self, "Destino não suportado",
-                f"Só é possível extrair para pastas locais.\n\nDestino: {dest}",
+                self, _("Unsupported destination"),
+                _("Can only extract to local folders.\n\nDestination: {path}").format(path=dest),
             )
             return
         if not self.confirm_overwrite(nodes, dest):
@@ -569,7 +582,7 @@ class MainWindow(QMainWindow):
         self._extracting = True
         try:
             if run_extraction(self, self.pkg, [(n, dest) for n in nodes]):
-                self.statusBar().showMessage(f"Extraído para {dest}", 8000)
+                self.statusBar().showMessage(_("Extracted to {path}").format(path=dest), 8000)
         finally:
             self._extracting = False
 
@@ -577,9 +590,9 @@ class MainWindow(QMainWindow):
         size = sum(n.total_size() for n in nodes)
         if size > LARGE_TEMP_EXTRACT:
             answer = QMessageBox.question(
-                self, "Arquivo grande",
-                f"Isso vai extrair {human_size(size)} para uma pasta temporária antes. Continuar?\n\n"
-                "Dica: para arquivos grandes, use “Extrair selecionados…”.",
+                self, _("Large file"),
+                _("This will first extract {size} to a temporary folder. Continue?\n\n"
+                  "Tip: for large files, use “Extract selected…”.").format(size=human_size(size)),
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
             )
             if answer != QMessageBox.Yes:
@@ -604,10 +617,10 @@ class MainWindow(QMainWindow):
         node = self.model.node(self.proxy.mapToSource(index))
         menu = QMenu(self)
         if not node.is_dir:
-            menu.addAction("Abrir", lambda: self.open_item(index))
+            menu.addAction(_("Open"), lambda: self.open_item(index))
         menu.addAction(self.act_extract)
         menu.addSeparator()
-        menu.addAction("Copiar caminho", lambda: QApplication.clipboard().setText(node.path))
+        menu.addAction(_("Copy path"), lambda: QApplication.clipboard().setText(node.path))
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     def toggle_integration(self, enabled: bool) -> None:
@@ -615,13 +628,13 @@ class MainWindow(QMainWindow):
             if enabled:
                 desktop.install()
                 self.statusBar().showMessage(
-                    "Pronto: arquivos .pkg de PS4 agora abrem com o PKG Explorer.", 8000
+                    _("Done: PS4 .pkg files now open with PKG Explorer."), 8000
                 )
             else:
                 desktop.uninstall()
-                self.statusBar().showMessage("Associação de arquivos .pkg removida.", 8000)
+                self.statusBar().showMessage(_(".pkg file association removed."), 8000)
         except OSError as exc:
-            QMessageBox.critical(self, "Erro", str(exc))
+            QMessageBox.critical(self, _("Error"), str(exc))
 
     def ask_integration(self) -> None:
         """Pergunta (uma vez só) se arquivos .pkg devem abrir com este programa. Usado no
@@ -632,12 +645,12 @@ class MainWindow(QMainWindow):
         settings.setValue("integration/asked", True)
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Question)
-        box.setWindowTitle("Abrir arquivos .pkg")
-        box.setText("Quer que arquivos .pkg de PS4 abram com o PKG Explorer ao dar duplo clique?")
-        extra = "" if desktop.in_flatpak() else "Também cria um atalho no menu de aplicativos. "
-        box.setInformativeText(f"{extra}Dá para mudar isso depois no menu ☰ da janela.")
-        yes = box.addButton("Sim", QMessageBox.YesRole)
-        box.addButton("Agora não", QMessageBox.NoRole)
+        box.setWindowTitle(_("Open .pkg files"))
+        box.setText(_("Do you want PS4 .pkg files to open with PKG Explorer when you double-click them?"))
+        extra = "" if desktop.in_flatpak() else _("This also adds a shortcut to the applications menu. ")
+        box.setInformativeText(extra + _("You can change this later in the window's ☰ menu."))
+        yes = box.addButton(_("Yes"), QMessageBox.YesRole)
+        box.addButton(_("Not now"), QMessageBox.NoRole)
         box.exec()
         if box.clickedButton() is yes:
             self.act_integrate.setChecked(True)
@@ -645,13 +658,16 @@ class MainWindow(QMainWindow):
     def about(self) -> None:
         QMessageBox.about(
             self,
-            "Sobre o PKG Explorer",
+            _("About PKG Explorer"),
             f"<h3>PKG Explorer {__version__}</h3>"
-            "<p>Navegue pelo conteúdo de PKGs de PS4 e extraia só o que quiser.</p>"
-            "<p>Leitura de PKG/PFS adaptada do "
-            "<a href='https://github.com/AzaharPlus/shadPS4Plus'>ShadPs4Plus PKG Extractor</a>, "
-            "baseado no <a href='https://github.com/shadps4-emu/shadPS4'>shadPS4</a>.</p>"
-            "<p>Licença GPL-2.0-or-later.<br>"
+            f"<p>{_('Browse the contents of PS4 PKGs and extract only what you need.')}</p>"
+            "<p>"
+            + _("PKG/PFS reading adapted from {extractor}, based on {emulator}.").format(
+                extractor="<a href='https://github.com/AzaharPlus/shadPS4Plus'>"
+                "ShadPs4Plus PKG Extractor</a>",
+                emulator="<a href='https://github.com/shadps4-emu/shadPS4'>shadPS4</a>",
+            )
+            + f"</p><p>{_('License: GPL-2.0-or-later.')}<br>"
             "<a href='https://github.com/WhiteAnominum/PKG-Explorer'>"
             "github.com/WhiteAnominum/PKG-Explorer</a></p>",
         )
@@ -681,6 +697,11 @@ def main(argv: list[str] | None = None) -> int:
     app.setOrganizationName("PKG Explorer")
     app.setDesktopFileName(desktop.APP_ID)  # Wayland: liga a janela ao atalho/ícone
     app.setWindowIcon(QIcon(str(desktop.DATA_DIR / "pkg-explorer.svg")))
+    if LANGUAGE == "pt":
+        # Textos do próprio Qt (botões Yes/No, diálogos de arquivo).
+        translator = QTranslator(app)
+        if translator.load(QLocale("pt_BR"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+            app.installTranslator(translator)
     try:
         desktop.repair_if_moved()
     except OSError:
