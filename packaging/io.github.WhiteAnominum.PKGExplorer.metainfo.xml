@@ -36,6 +36,17 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.2" date="2026-10-30">
+      <description>
+        <p>Stability update:</p>
+        <ul>
+          <li>Fixed random crashes during extraction (present since 1.0)</li>
+          <li>Closing the window during an extraction now cancels it cleanly</li>
+          <li>Only one extraction runs at a time; no memory left behind after each extraction</li>
+          <li>Faster progress updates on very large packages</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1" date="2026-10-30">
       <description>
         <p>Security update:</p>
