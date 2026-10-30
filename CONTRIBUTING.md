@@ -29,6 +29,7 @@ pkg_explorer/
 ├── cli.py          pkg-explorer-cli (info, list, extract, integrate)
 ├── i18n.py         English -> Portuguese translations
 ├── desktop.py      Linux integration: .pkg file type, menu shortcut, icons
+├── shadps4.py      where a PKG goes when installed in shadPS4 (reads shadPS4's config)
 ├── kde_dnd.py      KDE drag-and-drop protocol (extract straight into the drop folder)
 ├── util.py         small shared helpers
 ├── data/           icons and the MIME type definition
