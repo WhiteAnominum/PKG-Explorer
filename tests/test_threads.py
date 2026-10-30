@@ -10,7 +10,7 @@ import ast
 import pathlib
 
 EXTRACTION = pathlib.Path(__file__).parent.parent / "pkg_explorer" / "gui" / "extraction.py"
-WORKER_SIDE = {"extract_jobs", "ExtractionState"}
+WORKER_SIDE = {"extract_jobs", "verify_job", "ExtractionState"}
 QT_MODULES = ("PySide6", "shiboken6")
 
 
