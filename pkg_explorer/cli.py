@@ -55,8 +55,10 @@ def cmd_extract(pkg: Pkg, args) -> None:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(prog="pkg-explorer-cli", description=_("Browse PS4 PKGs"))
     sub = parser.add_subparsers(dest="command", required=True)
-    for name, help_text in (("info", _("show information about the PKG")),
-                            ("list", _("list the files in the PKG"))):
+    for name, help_text in (
+        ("info", _("show information about the PKG")),
+        ("list", _("list the files in the PKG")),
+    ):
         p = sub.add_parser(name, help=help_text)
         p.add_argument("pkg")
     p = sub.add_parser("extract", help=_("extract files/folders (or everything, if none is given)"))
@@ -75,7 +77,11 @@ def main(argv=None) -> None:
 
         if args.command == "integrate":
             desktop.install()
-            print(_("Done. PS4 .pkg files now open with: {command}").format(command=desktop.describe_command()))
+            print(
+                _("Done. PS4 .pkg files now open with: {command}").format(
+                    command=desktop.describe_command()
+                )
+            )
         else:
             removed = desktop.uninstall()
             print(_("Integration removed.") if removed else _("Nothing to remove."))
