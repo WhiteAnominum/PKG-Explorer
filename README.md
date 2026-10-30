@@ -131,6 +131,18 @@ KDE has its own protocol (the same one used by Ark), which PKG Explorer implemen
 for large files, prefer the **Extract selected…** button, which writes straight to the chosen
 folder.
 
+## Development
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -e ".[test]"
+.venv/bin/pytest
+```
+
+The tests do not need any game: `tests/pkgbuilder.py` generates synthetic fake PKGs (encrypted
+like real ones) with whatever content each test needs, including malicious and malformed ones.
+They run on GitHub Actions on every push, and a release is only built if they pass.
+
 ## Legal notice
 
 PKG Explorer is a tool to inspect and extract PS4 packages that you are entitled to use, such as
