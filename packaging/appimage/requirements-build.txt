@@ -1,0 +1,3 @@
+# Ferramentas usadas para montar o AppImage (versões fixas para builds reproduzíveis).
+python-appimage==1.4.6
+build==1.6.1
