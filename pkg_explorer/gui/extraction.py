@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import threading
 
-from PySide6.QtCore import QEventLoop, QObject, Qt, QThread, Signal
+from PySide6.QtCore import QEventLoop, QObject, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
 from ..i18n import _
@@ -59,6 +59,31 @@ class ExtractWorker(QObject):
             self.done.emit(True, "")
 
 
+class _DialogBridge(QObject):
+    """Lives in the GUI thread. The worker's signals are connected to these slots, so Qt
+    delivers them through the GUI thread's event queue and the dialog is only ever touched
+    from the GUI thread (widgets must not be used from other threads)."""
+
+    def __init__(self, dialog: QProgressDialog, thread: QThread, result: dict):
+        super().__init__()
+        self._dialog = dialog
+        self._thread = thread
+        self._result = result
+
+    @Slot(int)
+    def show_progress(self, per_mille: int) -> None:
+        self._dialog.setValue(per_mille)
+
+    @Slot(str)
+    def show_current(self, path: str) -> None:
+        self._dialog.setLabelText(_("Extracting:\n{path}").format(path=path))
+
+    @Slot(bool, str)
+    def finish(self, ok: bool, error: str) -> None:
+        self._result["ok"], self._result["error"] = ok, error
+        self._thread.quit()
+
+
 def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> bool:
     """Extracts in another thread while showing a progress dialog. Returns True if it finished."""
     worker = ExtractWorker(pkg, jobs)
@@ -76,16 +101,12 @@ def run_extraction(parent: QWidget, pkg: Pkg, jobs: list[tuple[Node, str]]) -> b
 
     result: dict = {}
     loop = QEventLoop()
+    bridge = _DialogBridge(dialog, thread, result)
 
-    def finished(ok: bool, error: str) -> None:
-        result["ok"], result["error"] = ok, error
-        thread.quit()
-
-    worker.progress.connect(dialog.setValue)
-    worker.current.connect(
-        lambda path: dialog.setLabelText(_("Extracting:\n{path}").format(path=path))
-    )
-    worker.done.connect(finished)
+    # Receivers are QObjects in the GUI thread, so these connections are queued.
+    worker.progress.connect(bridge.show_progress)
+    worker.current.connect(bridge.show_current)
+    worker.done.connect(bridge.finish)
     thread.started.connect(worker.run)
     thread.finished.connect(loop.quit)
     thread.start()
