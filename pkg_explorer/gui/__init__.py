@@ -20,12 +20,9 @@ from .. import desktop
 from ..i18n import LANGUAGE
 from .window import MainWindow
 
-__all__ = ["MainWindow", "main"]
 
-
-def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv if argv is None else argv
-    app = QApplication(argv)
+def main() -> int:
+    app = QApplication(sys.argv)
     app.setApplicationName("PKG Explorer")
     app.setOrganizationName("PKG Explorer")
     app.setDesktopFileName(desktop.APP_ID)  # Wayland: ties the window to the shortcut/icon
@@ -43,6 +40,6 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     if desktop.should_ask_on_first_run():
         QTimer.singleShot(0, window.ask_integration)
-    if len(argv) > 1:
-        window.open_pkg(argv[1])
+    if len(sys.argv) > 1:
+        window.open_pkg(sys.argv[1])
     return app.exec()
