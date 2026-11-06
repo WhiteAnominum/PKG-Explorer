@@ -4,7 +4,7 @@
 import argparse
 import sys
 
-from . import integrity
+from . import desktop, integrity
 from .i18n import _
 from .pkg import Pkg, PkgError
 from .util import human_size
@@ -30,15 +30,12 @@ def cmd_list(pkg: Pkg, _args) -> None:
     for node in pkg.root.walk():
         if node.parent is None:
             continue
-        if node.is_dir:
-            print(f"{'':>12}  {node.path}/")
-        else:
-            print(f"{node.size:>12}  {node.path}")
+        size, suffix = ("", "/") if node.is_dir else (node.size, "")
+        print(f"{size:>12}  {node.path}{suffix}")
 
 
 def cmd_extract(pkg: Pkg, args) -> None:
-    paths = args.paths or [""]
-    for path in paths:
+    for path in args.paths or [""]:
         node = pkg.find(path)
         if node is None:
             sys.exit(_("not found in the PKG: {path}").format(path=path))
@@ -62,12 +59,8 @@ def cmd_verify(pkg: Pkg, args) -> None:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(prog="pkg-explorer-cli", description=_("Browse PS4 PKGs"))
     sub = parser.add_subparsers(dest="command", required=True)
-    for name, help_text in (
-        ("info", _("show information about the PKG")),
-        ("list", _("list the files in the PKG")),
-    ):
-        p = sub.add_parser(name, help=help_text)
-        p.add_argument("pkg")
+    sub.add_parser("info", help=_("show information about the PKG")).add_argument("pkg")
+    sub.add_parser("list", help=_("list the files in the PKG")).add_argument("pkg")
     p = sub.add_parser("extract", help=_("extract files/folders (or everything, if none is given)"))
     p.add_argument("pkg")
     p.add_argument("paths", nargs="*", help=_("paths inside the PKG, e.g. sce_sys/icon0.png"))
@@ -85,8 +78,6 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     if args.command in ("integrate", "unintegrate"):
-        from . import desktop
-
         if args.command == "integrate":
             desktop.install()
             print(
