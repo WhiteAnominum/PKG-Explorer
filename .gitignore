@@ -20,6 +20,9 @@ venv/
 build/
 dist/
 
+# Instruções locais do Claude Code
+CLAUDE.md
+
 # Pasta local de testes
 temp/
 /prints/
