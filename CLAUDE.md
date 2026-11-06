@@ -13,6 +13,13 @@ lista o conteúdo do PKG/PFS sem extrair tudo e permite extrair arquivos ou past
 - Comentários, docstrings e mensagens no código ficam em **inglês** (projeto público). Textos da
   interface são escritos em inglês e traduzidos em `pkg_explorer/i18n.py`.
 
+## Simplicidade
+
+- Tudo deve ser feito da forma mais simples possível, com menos linhas e menos complexidade, buscando
+  chegar no resultado.
+- Se houver muitas formas de fazer, pergunte ao usuário qual delas utilizar, apontando o efeito
+  esperado de cada uma.
+
 ## Fluxo de git
 
 - Faça um commit a cada criação ou alteração de arquivo (commits pequenos, mensagem descritiva).
