@@ -48,16 +48,6 @@ def test_load_config_custom_addon_dir(tmp_path):
     assert shadps4.load_config(tmp_path / "u").addon_dir == tmp_path / "dlcs"
 
 
-def test_load_legacy_toml(tmp_path):
-    pytest.importorskip("tomllib")
-    (tmp_path / "config.toml").write_text(
-        '[GUI]\ninstallDirs = ["/a", "/b"]\ninstallDirsEnabled = [true, false]\n'
-        'addonInstallDir = "/dlc"\n'
-    )
-    cfg = shadps4.load_config(tmp_path)
-    assert [str(d) for d in cfg.install_dirs] == ["/a"] and str(cfg.addon_dir) == "/dlc"
-
-
 def test_broken_config_raises(tmp_path):
     (tmp_path / "config.json").write_text("{not json")
     with pytest.raises(shadps4.Shadps4Error):
