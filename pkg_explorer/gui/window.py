@@ -52,7 +52,6 @@ class MainWindow(QMainWindow):
         self.integrity: integrity.Result | None = None  # quick check on open, or full check
         self.model: PkgTreeModel | None = None
         self.dragged_nodes: list[Node] = []
-        self._extracting = False
         self._cancel_extraction: threading.Event | None = None
         self._close_when_done = False
         self.kde_dnd: kde_dnd.DndExtractService | None = None
@@ -178,7 +177,8 @@ class MainWindow(QMainWindow):
             self.open_pkg(path)
 
     def open_pkg(self, path: str) -> None:
-        if self._extracting:  # the current PKG is still being read by the extraction thread
+        # The current PKG may still be in use by the worker thread.
+        if self._cancel_extraction is not None:
             QMessageBox.information(
                 self, _("Please wait"), _("An extraction is already in progress.")
             )
@@ -282,17 +282,8 @@ class MainWindow(QMainWindow):
             for i in self.tree.selectionModel().selectedRows(0)
         ]
         # If a folder and something inside it are both selected, keep only the folder.
-        chosen = set(map(id, nodes))
-
-        def inside_selected(node: Node) -> bool:
-            p = node.parent
-            while p is not None:
-                if id(p) in chosen:
-                    return True
-                p = p.parent
-            return False
-
-        return [n for n in nodes if not inside_selected(n)]
+        inside = {d for n in nodes for d in n.walk() if d is not n}
+        return [n for n in nodes if n not in inside]
 
     # ---- actions ----
 
@@ -303,40 +294,39 @@ class MainWindow(QMainWindow):
         """Every long job (extraction, full check) goes through here: only one at a time,
         actions disabled meanwhile, and it can be cancelled when the window is closed (see
         closeEvent). Returns what `run(cancel)` returns, or None if another job is running."""
-        if self._extracting:
+        if self._cancel_extraction is not None:
             QMessageBox.information(
                 self, _("Please wait"), _("An extraction is already in progress.")
             )
             return None
-        self._extracting = True
         self._cancel_extraction = threading.Event()
         self.set_actions_enabled(False)
         self.act_open.setEnabled(False)
         try:
             return run(self._cancel_extraction)
         finally:
-            self._extracting = False
             self._cancel_extraction = None
             self.set_actions_enabled(self.pkg is not None)
             self.act_open.setEnabled(True)
             if self._close_when_done:
                 QTimer.singleShot(0, self.close)
 
+    def _ask(self, title: str, text: str) -> bool:
+        buttons = QMessageBox.Yes | QMessageBox.No
+        return QMessageBox.question(self, title, text, buttons, QMessageBox.No) == QMessageBox.Yes
+
     def confirm_overwrite(self, nodes: list[Node], dest: str) -> bool:
         existing = [n.name for n in nodes if os.path.exists(os.path.join(dest, n.name))]
         if not existing:
             return True
         names = "\n".join(existing[:10]) + ("\n…" if len(existing) > 10 else "")
-        answer = QMessageBox.question(
-            self,
+        return self._ask(
             _("Replace?"),
             _("Already exists in {dest}:\n\n{names}\n\nReplace?").format(dest=dest, names=names),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
         )
-        return answer == QMessageBox.Yes
 
-    def extract_nodes(self, nodes: list[Node]) -> None:
+    def extract_selected(self) -> None:
+        nodes = self.selected_nodes()
         if not nodes:
             QMessageBox.information(self, _("Extract"), _("Select one or more files or folders."))
             return
@@ -348,9 +338,6 @@ class MainWindow(QMainWindow):
         if self._extract([(n, dest) for n in nodes]):
             self.statusBar().showMessage(_("Extracted to {path}").format(path=dest), 8000)
 
-    def extract_selected(self) -> None:
-        self.extract_nodes(self.selected_nodes())
-
     def extract_all(self) -> None:
         dest = QFileDialog.getExistingDirectory(
             self, _("Extract all to…"), os.path.dirname(self.pkg.path)
@@ -358,19 +345,14 @@ class MainWindow(QMainWindow):
         if not dest:
             return
         target = os.path.join(dest, self.pkg.output_folder_name)
-        if os.path.exists(target):
-            answer = QMessageBox.question(
-                self,
-                _("Folder already exists"),
-                _(
-                    "{path}\n\nalready exists. Extract over it (files with the same name will be "
-                    "replaced)?"
-                ).format(path=target),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if answer != QMessageBox.Yes:
-                return
+        if os.path.exists(target) and not self._ask(
+            _("Folder already exists"),
+            _(
+                "{path}\n\nalready exists. Extract over it (files with the same name will be "
+                "replaced)?"
+            ).format(path=target),
+        ):
+            return
         if self._extract([(self.pkg.root, target)]):
             self.statusBar().showMessage(_("Extracted to {path}").format(path=target), 8000)
             QDesktopServices.openUrl(QUrl.fromLocalFile(target))
@@ -398,19 +380,14 @@ class MainWindow(QMainWindow):
 
     def extract_to_temp(self, nodes: list[Node]) -> str | None:
         size = sum(n.total_size() for n in nodes)
-        if size > LARGE_TEMP_EXTRACT:
-            answer = QMessageBox.question(
-                self,
-                _("Large file"),
-                _(
-                    "This will first extract {size} to a temporary folder. Continue?\n\n"
-                    "Tip: for large files, use “Extract selected…”."
-                ).format(size=human_size(size)),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if answer != QMessageBox.Yes:
-                return None
+        if size > LARGE_TEMP_EXTRACT and not self._ask(
+            _("Large file"),
+            _(
+                "This will first extract {size} to a temporary folder. Continue?\n\n"
+                "Tip: for large files, use “Extract selected…”."
+            ).format(size=human_size(size)),
+        ):
+            return None
         temp = make_temp_dir()
         if not self._extract([(n, temp) for n in nodes]):
             return None
@@ -649,17 +626,13 @@ class MainWindow(QMainWindow):
                 break
 
     def closeEvent(self, event):
-        if self._extracting:
+        if self._cancel_extraction is not None:
             # The extraction thread is still reading the PKG: cancel it, wait for it to stop
             # (in _extract) and only then close.
-            answer = QMessageBox.question(
-                self,
+            if self._ask(
                 _("Extraction in progress"),
                 _("An extraction is in progress. Cancel it and close the window?"),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if answer == QMessageBox.Yes:
+            ):
                 self._close_when_done = True
                 self._cancel_extraction.set()
             event.ignore()
