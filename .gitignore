@@ -9,6 +9,7 @@
 # Saídas de extração
 extracted/
 *_extracted/
+/c/
 
 # Python
 __pycache__/
@@ -21,6 +22,7 @@ dist/
 
 # Pasta local de testes
 temp/
+/prints/
 
 # Flatpak (build local)
 .flatpak-builder/
