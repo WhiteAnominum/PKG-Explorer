@@ -185,9 +185,9 @@ class Pkg:
 
     def _parse_header(self) -> None:
         """Header fields: docs/FORMAT.md, section 1 (big-endian)."""
-        header = self.read_raw(0, 0x1000)
+        header = self._file.read(0x1000)
         self.header = header  # kept for the integrity check (integrity.py)
-        if struct.unpack_from(">I", header, 0)[0] != PKG_MAGIC:
+        if len(header) < 0x1000 or struct.unpack_from(">I", header, 0)[0] != PKG_MAGIC:
             raise PkgError(_("this does not look like a valid PKG file"))
 
         self.file_size = os.path.getsize(self.path)
