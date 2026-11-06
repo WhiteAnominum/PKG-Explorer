@@ -279,8 +279,8 @@ class Pkg:
         key1_3 = self.read_raw(keys_entry.offset + 32 + 7 * 32 + 3 * 256, 256)
         try:
             self._dk3 = crypto.rsa2048_decrypt(key1_3, is_dk3=True)
-            iv_key = crypto.iv_key_hash256(image_entry.raw + self._dk3)
-            img_key = crypto.aes_cbc_decrypt(iv_key, self.read_raw(image_entry.offset, 256))
+            image_key = self.read_raw(image_entry.offset, 256)
+            img_key = crypto.aes_cbc_decrypt(image_entry.raw + self._dk3, image_key)
             ekpfs = crypto.rsa2048_decrypt(img_key, is_dk3=False)
         except ValueError as exc:
             raise PkgError(
@@ -307,8 +307,7 @@ class Pkg:
         # AES-CBC works on 16-byte blocks: the last encrypted block continues in the file past
         # `size`. (The original reads memory past its buffer here and gets the last bytes wrong.)
         padded = self.read_raw(entry.offset, entry.size + (-entry.size % 16))
-        iv_key = crypto.iv_key_hash256(entry.raw + self._dk3)
-        return crypto.aes_cbc_decrypt(iv_key, padded)[: entry.size]
+        return crypto.aes_cbc_decrypt(entry.raw + self._dk3, padded)[: entry.size]
 
     # ---- PFS ----
 
