@@ -21,9 +21,8 @@ OBJECT_PATH = f"/DndExtract/{os.getpid()}"
 
 
 def is_available() -> bool:
-    if (
-        os.environ.get("PKG_EXPLORER_DND") == "temp"
-    ):  # forces the temporary-folder mode (for testing)
+    # PKG_EXPLORER_DND=temp forces the temporary-folder mode (for testing).
+    if os.environ.get("PKG_EXPLORER_DND") == "temp":
         return False
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper().split(":")
     return "KDE" in desktop and QDBusConnection.sessionBus().isConnected()
@@ -50,7 +49,6 @@ class DndExtractService(QObject):
     def extractSelectedFilesTo(self, destination: str) -> None:
         # KIO waits for this D-Bus call to return before releasing Dolphin, so we only
         # schedule the extraction and return right away.
-        if "://" in destination:
-            url = QUrl(destination)
-            destination = url.toLocalFile() if url.isLocalFile() else destination
+        url = QUrl(destination)
+        destination = url.toLocalFile() if url.isLocalFile() else destination
         QTimer.singleShot(0, lambda: self._on_drop(destination))
