@@ -12,32 +12,22 @@ from . import keys
 XTS_SECTOR_SIZE = 0x1000
 
 
-def _rsa_pkcs1v15_decrypt(ciphertext: bytes, modulus: int, private_exponent: int) -> bytes:
-    """RSAES-PKCS1-v1_5: decrypts and strips the padding (00 02 <random> 00 <data>)."""
-    size = (modulus.bit_length() + 7) // 8
-    m = pow(int.from_bytes(ciphertext, "big"), private_exponent, modulus).to_bytes(size, "big")
-    if m[0] != 0 or m[1] != 2:
-        raise ValueError("invalid RSA padding")
-    sep = m.index(0, 2)
-    return m[sep + 1 :]
-
-
 def rsa2048_decrypt(ciphertext: bytes, is_dk3: bool) -> bytes:
-    """Returns the first 32 decrypted bytes (DK3 or EKPFS)."""
+    """RSAES-PKCS1-v1_5 (00 02 <random> 00 <data>): returns the first 32 bytes (DK3 or EKPFS)."""
     if is_dk3:
         n, d = keys.DK3_MODULUS, keys.DK3_PRIVATE_EXPONENT
     else:
         n, d = keys.FAKE_MODULUS, keys.FAKE_PRIVATE_EXPONENT
-    return _rsa_pkcs1v15_decrypt(ciphertext, n, d)[:32]
+    m = pow(int.from_bytes(ciphertext, "big"), d, n).to_bytes((n.bit_length() + 7) // 8, "big")
+    if m[0] != 0 or m[1] != 2:
+        raise ValueError("invalid RSA padding")
+    return m[m.index(0, 2) + 1 :][:32]
 
 
-def iv_key_hash256(data: bytes) -> bytes:
-    return hashlib.sha256(data).digest()
-
-
-def aes_cbc_decrypt(iv_key: bytes, ciphertext: bytes) -> bytes:
-    """AES-128-CBC with IV = iv_key[0:16] and key = iv_key[16:32]."""
-    decryptor = Cipher(algorithms.AES(iv_key[16:32]), modes.CBC(iv_key[:16])).decryptor()
+def aes_cbc_decrypt(key_material: bytes, ciphertext: bytes) -> bytes:
+    """AES-128-CBC with IV and key taken from the SHA-256 of `key_material`."""
+    digest = hashlib.sha256(key_material).digest()
+    decryptor = Cipher(algorithms.AES(digest[16:32]), modes.CBC(digest[:16])).decryptor()
     return decryptor.update(ciphertext) + decryptor.finalize()
 
 
