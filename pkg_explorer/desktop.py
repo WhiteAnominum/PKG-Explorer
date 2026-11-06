@@ -27,15 +27,14 @@ def in_flatpak() -> bool:
     return "FLATPAK_ID" in os.environ
 
 
-def _data_home() -> Path:
-    if in_flatpak():
-        # Inside Flatpak, XDG_DATA_HOME points to ~/.var/app/<id>; we want the host's.
-        return Path(os.environ.get("HOST_XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+def data_home() -> Path:
+    # Inside Flatpak, XDG_DATA_HOME points to ~/.var/app/<id>; we want the host's.
+    var = "HOST_XDG_DATA_HOME" if in_flatpak() else "XDG_DATA_HOME"
+    return Path(os.environ.get(var) or Path.home() / ".local" / "share")
 
 
 def _paths() -> dict[str, Path]:
-    data = _data_home()
+    data = data_home()
     icons = data / "icons" / "hicolor" / "scalable"
     paths = {
         "mime": data / "mime" / "packages" / f"{APP_ID}.xml",
@@ -49,8 +48,6 @@ def _paths() -> dict[str, Path]:
 
 def _desktop_quote(arg: str) -> str:
     """Quotes an argument as the Desktop Entry spec requires (for paths with spaces)."""
-    if not any(c in arg for c in " \t\n\"'\\><~|&;$*?#()`"):
-        return arg
     escaped = arg.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
     return f'"{escaped}"'
 
@@ -91,7 +88,7 @@ def _run(*cmd: str) -> None:
 
 
 def _refresh() -> None:
-    data = _data_home()
+    data = data_home()
     _run("update-mime-database", str(data / "mime"))
     _run("update-desktop-database", str(data / "applications"))
     _run("gtk-update-icon-cache", "-f", "-t", str(data / "icons" / "hicolor"))
@@ -100,7 +97,7 @@ def _refresh() -> None:
     _run("kbuildsycoca5")
 
 
-def install(make_default: bool = True) -> list[Path]:
+def install(make_default: bool = True) -> None:
     paths = _paths()
     for p in paths.values():
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -112,7 +109,6 @@ def install(make_default: bool = True) -> list[Path]:
     _refresh()
     if make_default and not in_flatpak():
         _run("xdg-mime", "default", f"{APP_ID}.desktop", MIME_TYPE)
-    return list(paths.values())
 
 
 def uninstall() -> list[Path]:
