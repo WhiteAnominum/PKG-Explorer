@@ -21,26 +21,18 @@ import threading
 from dataclasses import dataclass
 
 from .i18n import _
-from .pkg import ENTRY_CHUNK, ExtractionCancelled, Pkg, PkgEntry, PkgError, ProgressCallback
+from .pkg import ExtractionCancelled, Pkg, PkgEntry, PkgError, ProgressCallback
 
 ENTRY_ENCRYPTED = 0x80000000  # bit of "flags 1" (entry record offset 0x08)
 DIGESTS_ENTRY_ID = 0x0001
 READ_CHUNK = 8 << 20
 
-# Problems: the part names shown to the user.
-HEADER = "header"
-DIGESTS = "digest table"
-BODY = "package body"
-PFS_START = "start of the game data"
-PFS = "game data"
-
-PART_LABELS = {
-    HEADER: _("header"),
-    DIGESTS: _("digest table"),
-    BODY: _("package body"),
-    PFS_START: _("start of the game data"),
-    PFS: _("game data (PFS image)"),
-}
+# The part names shown to the user.
+HEADER = _("header")
+DIGESTS = _("digest table")
+BODY = _("package body")
+PFS_START = _("start of the game data")
+PFS = _("game data (PFS image)")
 
 
 @dataclass
@@ -52,12 +44,6 @@ class Result:
     @property
     def ok(self) -> bool:
         return not self.bad
-
-
-def part_label(part: str) -> str:
-    if part in PART_LABELS:
-        return PART_LABELS[part]
-    return part  # entry names (param.sfo, icon0.png, ...)
 
 
 def _digest_at(pkg: Pkg, offset: int) -> bytes | None:
@@ -87,10 +73,7 @@ def _sha256_range(
 def _entry_digest(pkg: Pkg, entry: PkgEntry) -> bytes:
     flags1 = struct.unpack_from(">I", entry.raw, 8)[0]
     size = entry.size + (-entry.size % 16) if flags1 & ENTRY_ENCRYPTED else entry.size
-    digest = hashlib.sha256()
-    for pos in range(0, size, ENTRY_CHUNK):
-        digest.update(pkg.read_raw(entry.offset + pos, min(ENTRY_CHUNK, size - pos)))
-    return digest.digest()
+    return _sha256_range(pkg, entry.offset, size)
 
 
 def body_range(pkg: Pkg) -> tuple[int, int]:
