@@ -47,7 +47,7 @@ def cmd_verify(pkg: Pkg, args) -> None:
     result = integrity.verify(pkg, full=not args.quick)
     for part in result.checked:
         status = _("BAD") if part in result.bad else "ok"
-        print(f"{status:>4}  {integrity.part_label(part)}")
+        print(f"{status:>4}  {part}")
     if not result.checked:
         print(_("This PKG has no digests to check."))
     elif result.ok:
