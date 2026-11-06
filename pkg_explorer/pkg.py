@@ -13,7 +13,6 @@ import os
 import struct
 import threading
 import zlib
-from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
@@ -27,8 +26,6 @@ PFSC_MAGIC = b"PFSC"
 
 PFS_FILE = 2
 PFS_DIR = 3
-PFS_CURRENT_DIR = 4
-PFS_PARENT_DIR = 5
 
 INODE_SIZE = 0xA8
 NP_ENTRY_IDS = (0x400, 0x401, 0x402, 0x403)
@@ -105,8 +102,6 @@ class PkgEntry:
 
 @dataclass
 class Inode:
-    mode: int
-    flags: int
     size: int
     blocks: int
     loc: int
@@ -147,22 +142,19 @@ class Pkg:
         self.path = os.fspath(path)
         self._file = open(self.path, "rb")  # noqa: SIM115 - kept open until close()
         self._lock = threading.Lock()
-        self._block_cache: OrderedDict[int, bytes] = OrderedDict()
         try:
             self._parse_header()
             self._parse_entries()
             self._derive_keys()
             self._open_pfs()
             self.root = self._build_tree()
-        except PkgError:
+        except (PkgError, OSError):
             self._file.close()
             raise
         except Exception as exc:
             # Any other failure while parsing the file (absurd structure, out of memory, etc.)
             # becomes an "invalid PKG" message instead of crashing the program.
             self._file.close()
-            if isinstance(exc, OSError):
-                raise
             raise _corrupt(f"{type(exc).__name__}: {exc}") from exc
 
     def close(self) -> None:
@@ -176,7 +168,8 @@ class Pkg:
 
     # ---- raw reading ----
 
-    def _read(self, offset: int, size: int) -> bytes:
+    def read_raw(self, offset: int, size: int) -> bytes:
+        """Bytes exactly as stored in the file (no decryption)."""
         with self._lock:
             self._file.seek(offset)
             data = self._file.read(size)
@@ -188,15 +181,11 @@ class Pkg:
             )
         return data
 
-    def read_raw(self, offset: int, size: int) -> bytes:
-        """Bytes exactly as stored in the file (no decryption)."""
-        return self._read(offset, size)
-
     # ---- header and entries ----
 
     def _parse_header(self) -> None:
         """Header fields: docs/FORMAT.md, section 1 (big-endian)."""
-        header = self._read(0, 0x1000)
+        header = self.read_raw(0, 0x1000)
         self.header = header  # kept for the integrity check (integrity.py)
         if struct.unpack_from(">I", header, 0)[0] != PKG_MAGIC:
             raise PkgError(_("this does not look like a valid PKG file"))
@@ -204,9 +193,7 @@ class Pkg:
         self.file_size = os.path.getsize(self.path)
         self.entry_count = struct.unpack_from(">I", header, 0x10)[0]  # entry count
         self.entry_table_offset = struct.unpack_from(">I", header, 0x18)[0]  # entry table offset
-        content_offset, content_size = struct.unpack_from(
-            ">QQ", header, 0x30
-        )  # content offset/size
+        content_offset, content_size = struct.unpack_from(">QQ", header, 0x30)
         self.content_id = header[0x40:0x64].rstrip(b"\x00").decode("ascii", "replace")
         self.title_id = header[0x47:0x50].decode("ascii", "replace")  # content ID chars 7..15
         self.content_flags = struct.unpack_from(">I", header, 0x78)[0]  # content flags
@@ -229,7 +216,7 @@ class Pkg:
 
     def _parse_entries(self) -> None:
         """Entry table: docs/FORMAT.md, section 2."""
-        table = self._read(self.entry_table_offset, self.entry_count * 32)
+        table = self.read_raw(self.entry_table_offset, self.entry_count * 32)
         self.entries: list[PkgEntry] = []
         for i in range(self.entry_count):
             raw = table[i * 32 : i * 32 + 32]
@@ -243,7 +230,7 @@ class Pkg:
             if sfo_entry.size > MAX_SFO_SIZE:
                 raise _corrupt("param.sfo is too large")
             try:
-                self.sfo = parse_sfo(self._read(sfo_entry.offset, sfo_entry.size))
+                self.sfo = parse_sfo(self.read_raw(sfo_entry.offset, sfo_entry.size))
             except (ValueError, IndexError, struct.error) as exc:
                 raise PkgError(_("invalid param.sfo")) from exc
 
@@ -289,18 +276,18 @@ class Pkg:
             raise PkgError(_("the PKG has no key entries (ENTRY_KEYS / IMAGE_KEY)"))
 
         # ENTRY_KEYS: seed_digest[32], digest1[7][32], key1[7][256]; the DK3 is key1[3].
-        key1_3 = self._read(keys_entry.offset + 32 + 7 * 32 + 3 * 256, 256)
+        key1_3 = self.read_raw(keys_entry.offset + 32 + 7 * 32 + 3 * 256, 256)
         try:
             self._dk3 = crypto.rsa2048_decrypt(key1_3, is_dk3=True)
             iv_key = crypto.iv_key_hash256(image_entry.raw + self._dk3)
-            img_key = crypto.aes_cbc_decrypt(iv_key, self._read(image_entry.offset, 256))
+            img_key = crypto.aes_cbc_decrypt(iv_key, self.read_raw(image_entry.offset, 256))
             ekpfs = crypto.rsa2048_decrypt(img_key, is_dk3=False)
         except ValueError as exc:
             raise PkgError(
                 _("could not decrypt the PKG keys (only fake/fpkg PKGs are supported)")
             ) from exc
 
-        seed = self._read(self.pfs_image_offset + 0x370, 16)  # PFS seed (plaintext)
+        seed = self.read_raw(self.pfs_image_offset + 0x370, 16)  # PFS seed (plaintext)
         data_key, tweak_key = crypto.pfs_gen_crypto_key(ekpfs, seed)
         self._pfs = crypto.PfsDecryptor(data_key, tweak_key)
 
@@ -310,7 +297,7 @@ class Pkg:
             return
         # In chunks: the size comes from the file and must not turn into a huge allocation.
         for pos in range(0, entry.size, ENTRY_CHUNK):
-            yield self._read(entry.offset + pos, min(ENTRY_CHUNK, entry.size - pos))
+            yield self.read_raw(entry.offset + pos, min(ENTRY_CHUNK, entry.size - pos))
 
     def read_entry(self, entry: PkgEntry) -> bytes:
         if entry.id not in NP_ENTRY_IDS:
@@ -319,7 +306,7 @@ class Pkg:
             raise _corrupt(f"entry {entry.name} is too large")
         # AES-CBC works on 16-byte blocks: the last encrypted block continues in the file past
         # `size`. (The original reads memory past its buffer here and gets the last bytes wrong.)
-        padded = self._read(entry.offset, entry.size + (-entry.size % 16))
+        padded = self.read_raw(entry.offset, entry.size + (-entry.size % 16))
         iv_key = crypto.iv_key_hash256(entry.raw + self._dk3)
         return crypto.aes_cbc_decrypt(iv_key, padded)[: entry.size]
 
@@ -329,7 +316,7 @@ class Pkg:
         """Reads and decrypts `size` bytes of the outer PFS image starting at `offset`."""
         start = offset & ~(crypto.XTS_SECTOR_SIZE - 1)
         end = -(-(offset + size) // crypto.XTS_SECTOR_SIZE) * crypto.XTS_SECTOR_SIZE
-        data = self._read(self.pfs_image_offset + start, end - start)
+        data = self.read_raw(self.pfs_image_offset + start, end - start)
         data = self._pfs.decrypt(data, start // crypto.XTS_SECTOR_SIZE)
         return data[offset - start : offset - start + size]
 
@@ -395,16 +382,8 @@ class Pkg:
             block = batch_end
 
     def _read_block(self, index: int) -> bytes:
-        """One inner block, with a small cache (used for inodes and directories)."""
-        cached = self._block_cache.get(index)
-        if cached is not None:
-            self._block_cache.move_to_end(index)
-            return cached
-        data = next(self._read_blocks(index, 1))
-        self._block_cache[index] = data
-        if len(self._block_cache) > 64:
-            self._block_cache.popitem(last=False)
-        return data
+        """One inner block (used for inodes and directories)."""
+        return next(self._read_blocks(index, 1))
 
     def _read_inodes(self) -> list[Inode]:
         """Superblock and inode table: docs/FORMAT.md, section 5."""
@@ -424,13 +403,9 @@ class Pkg:
             for p in range(0, per_block * INODE_SIZE, INODE_SIZE):
                 if len(inodes) == inode_count:
                     break
-                mode, _nlink, flags, size = struct.unpack_from(
-                    "<HHIq", data, p
-                )  # mode, flags, size
-                blocks, loc = struct.unpack_from(
-                    "<II", data, p + 0x60
-                )  # number of blocks, first block
-                inodes.append(Inode(mode, flags, size, blocks, loc))
+                size = struct.unpack_from("<q", data, p + 8)[0]
+                blocks, loc = struct.unpack_from("<II", data, p + 0x60)
+                inodes.append(Inode(size, blocks, loc))
             block += 1
         return inodes
 
@@ -559,9 +534,8 @@ class Pkg:
             | getattr(os, "O_NOFOLLOW", 0)
             | getattr(os, "O_BINARY", 0)
         )
-        out = os.fdopen(
-            os.open(target, flags, 0o644), "wb"
-        )  # outside the try: if it fails, there is nothing to delete
+        # Outside the try: if it fails, there is nothing to delete.
+        out = os.fdopen(os.open(target, flags, 0o644), "wb")
         try:
             with out:
                 for chunk in self.iter_file(node):
