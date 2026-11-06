@@ -14,11 +14,10 @@ The user folder holds config.json (config.toml in older versions) - src/common/p
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .desktop import in_flatpak
+from .desktop import data_home
 from .pkg import Pkg
 from .sfo import parse_sfo
 
@@ -49,14 +48,9 @@ class InstallPlan:
 
 def default_user_dirs() -> list[Path]:
     """Where shadPS4 keeps config.json: the normal install and the Flatpak."""
-    home = Path.home()
-    if in_flatpak():  # XDG_DATA_HOME points inside our sandbox; we want the host's
-        data = Path(os.environ.get("HOST_XDG_DATA_HOME") or home / ".local" / "share")
-    else:
-        data = Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
     return [
-        data / "shadPS4",
-        home / ".var" / "app" / "net.shadps4.shadPS4" / "data" / "shadPS4",
+        data_home() / "shadPS4",
+        Path.home() / ".var" / "app" / "net.shadps4.shadPS4" / "data" / "shadPS4",
     ]
 
 
