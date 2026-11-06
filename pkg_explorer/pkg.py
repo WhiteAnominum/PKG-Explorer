@@ -535,8 +535,11 @@ class Pkg:
             | getattr(os, "O_NOFOLLOW", 0)
             | getattr(os, "O_BINARY", 0)
         )
+        # Written beside the target and renamed at the end, so that a cancelled or failed
+        # extraction keeps a file that already existed.
+        partial = target + ".part"
         # Outside the try: if it fails, there is nothing to delete.
-        out = os.fdopen(os.open(target, flags, 0o644), "wb")
+        out = os.fdopen(os.open(partial, flags, 0o644), "wb")
         try:
             with out:
                 for chunk in self.iter_file(node):
@@ -545,10 +548,11 @@ class Pkg:
                     out.write(chunk)
                     if progress is not None:
                         progress(len(chunk))
+            os.replace(partial, target)
         except BaseException:
             # Do not leave a half-written file behind.
             with contextlib.suppress(OSError):
-                os.remove(target)
+                os.remove(partial)
             raise
         return target
 
