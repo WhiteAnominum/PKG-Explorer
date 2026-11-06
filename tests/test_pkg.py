@@ -155,3 +155,27 @@ def test_content_flags_need_all_their_bits(make_pkg, value, kind, flags):
     path, _ = make_pkg(content_flags=value)
     with Pkg(path) as pkg:
         assert pkg.kind == kind and pkg.flags == flags
+
+
+def test_cancel_keeps_existing_file(make_pkg, tmp_path):
+    path, _ = make_pkg()
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "eboot.bin").write_bytes(b"ORIGINAL")
+    cancel = threading.Event()
+    cancel.set()
+    with Pkg(path) as pkg, pytest.raises(ExtractionCancelled):
+        pkg.extract(pkg.find("eboot.bin"), out, cancel=cancel)
+    assert (out / "eboot.bin").read_bytes() == b"ORIGINAL"
+    assert os.listdir(out) == ["eboot.bin"]
+
+
+def test_extract_replaces_existing_file(make_pkg, tmp_path):
+    path, _ = make_pkg()
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "eboot.bin").write_bytes(b"ORIGINAL")
+    with Pkg(path) as pkg:
+        pkg.extract(pkg.find("eboot.bin"), out)
+    assert (out / "eboot.bin").read_bytes() == sample_tree()["eboot.bin"]
+    assert os.listdir(out) == ["eboot.bin"]
