@@ -4,7 +4,6 @@
 import struct
 
 PSF_MAGIC = b"\x00PSF"
-FMT_UTF8_SPECIAL = 0x0004
 FMT_UTF8 = 0x0204
 FMT_INT32 = 0x0404
 
