@@ -133,3 +133,21 @@ def test_fuzz_pfs_structures(make_pkg, monkeypatch):
 
         monkeypatch.setattr(Pkg, "_decode_block", mutated)
         _only_pkg_errors(path)
+
+
+@pytest.mark.parametrize("title_id", ["../../../", "a/b/c/d/e", "..\\..\\..\\"])
+def test_malicious_title_id_is_rejected(make_pkg, title_id):
+    path, _ = make_pkg()
+    with open(path, "r+b") as f:
+        f.seek(0x47)
+        f.write(title_id.encode())
+    with pytest.raises(PkgError, match="invalid file name"):
+        Pkg(path)
+
+
+@pytest.mark.parametrize("label", ["/home/victim/.config/autostart", "../../evil", ".."])
+def test_malicious_dlc_label_is_rejected(make_pkg, label):
+    sfo = {"TITLE": "DLC", "CATEGORY": "ac", "CONTENT_ID": f"UP0000-TEST00001_00-{label}"}
+    path, _ = make_pkg(sfo=sfo)
+    with pytest.raises(PkgError, match="invalid file name"):
+        Pkg(path)
