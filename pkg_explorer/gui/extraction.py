@@ -57,37 +57,33 @@ class ExtractionState:
         self.written += n
 
 
+def _run_worker(state: ExtractionState, job, *args) -> None:
+    """Thread target: runs `job` and records its outcome. Must not use any Qt object."""
+    try:
+        state.result = job(*args)
+    except ExtractionCancelled:
+        pass
+    except Exception as exc:  # noqa: BLE001 - any error is shown to the user
+        state.error = str(exc)
+    else:
+        state.ok = True
+    finally:
+        state.finished = True
+
+
 def extract_jobs(
     pkg: Pkg, jobs: list[tuple[Node, str]], cancel: threading.Event, state: ExtractionState
 ) -> None:
     """Runs in the worker thread. Must not use any Qt object."""
-    try:
-        for node, dest in jobs:
-            state.current = node.path or _("(everything)")
-            pkg.extract(node, dest, state.add, cancel)
-    except ExtractionCancelled:
-        pass
-    except Exception as exc:  # noqa: BLE001 - any error is shown to the user
-        state.error = str(exc)
-    else:
-        state.ok = True
-    finally:
-        state.finished = True
+    for node, dest in jobs:
+        state.current = node.path or _("(everything)")
+        pkg.extract(node, dest, state.add, cancel)
 
 
-def verify_job(pkg: Pkg, cancel: threading.Event, state: ExtractionState) -> None:
+def verify_job(pkg: Pkg, cancel: threading.Event, state: ExtractionState) -> integrity.Result:
     """Runs in the worker thread. Must not use any Qt object."""
-    try:
-        state.current = _("game data")
-        state.result = integrity.verify(pkg, full=True, progress=state.add, cancel=cancel)
-    except ExtractionCancelled:
-        pass
-    except Exception as exc:  # noqa: BLE001 - any error is shown to the user
-        state.error = str(exc)
-    else:
-        state.ok = True
-    finally:
-        state.finished = True
+    state.current = _("game data")
+    return integrity.verify(pkg, full=True, progress=state.add, cancel=cancel)
 
 
 def run_extraction(
@@ -146,7 +142,9 @@ def run_with_progress(
 
     Blocks (running a local event loop) until the worker thread has really finished, so the PKG
     is never used by the worker after this returns. The dialog's Cancel sets `cancel`."""
-    worker = threading.Thread(target=job, args=args, name="pkg-explorer-worker")
+    worker = threading.Thread(
+        target=_run_worker, args=(state, job, *args), name="pkg-explorer-worker"
+    )
 
     dialog = QProgressDialog(title + "…", _("Cancel"), 0, 1000, parent)
     dialog.setWindowTitle(title)
