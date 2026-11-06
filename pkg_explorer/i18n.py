@@ -10,18 +10,9 @@ from __future__ import annotations
 import os
 
 
-def _system_language() -> str:
-    forced = os.environ.get("PKG_EXPLORER_LANG")
-    if forced:
-        return forced
-    for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
-        value = os.environ.get(var)
-        if value:
-            return value.split(":")[0]
-    return ""
-
-
-LANGUAGE = "pt" if _system_language().lower().startswith("pt") else "en"
+_VARS = ("PKG_EXPLORER_LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG")
+_system_language = next(filter(None, map(os.environ.get, _VARS)), "")
+LANGUAGE = "pt" if _system_language.lower().startswith("pt") else "en"
 
 PT = {
     # PKG reader
@@ -165,6 +156,4 @@ PT = {
 
 
 def _(text: str) -> str:
-    if LANGUAGE == "pt":
-        return PT.get(text, text)
-    return text
+    return PT.get(text, text) if LANGUAGE == "pt" else text
