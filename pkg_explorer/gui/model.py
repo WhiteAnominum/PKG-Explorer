@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, QSortFilterProxyModel, Qt
@@ -23,25 +24,11 @@ class PkgTreeModel(QAbstractItemModel):
     def __init__(self, root: Node, parent: QObject | None = None):
         super().__init__(parent)
         self._root = root
-        self._children: dict[int, list[Node]] = {}
-        self._sizes: dict[int, int] = {}
+        self._kids = functools.cache(lambda node: list(node.children.values()))
+        self._size = functools.cache(Node.total_size)
         provider = QFileIconProvider()
         self._dir_icon = provider.icon(QFileIconProvider.Folder)
         self._file_icon = provider.icon(QFileIconProvider.File)
-
-    def _kids(self, node: Node) -> list[Node]:
-        kids = self._children.get(id(node))
-        if kids is None:
-            kids = list(node.children.values())
-            self._children[id(node)] = kids
-        return kids
-
-    def _size(self, node: Node) -> int:
-        size = self._sizes.get(id(node))
-        if size is None:
-            size = node.total_size()
-            self._sizes[id(node)] = size
-        return size
 
     def node(self, index: QModelIndex) -> Node:
         return index.internalPointer() if index.isValid() else self._root
@@ -66,10 +53,6 @@ class PkgTreeModel(QAbstractItemModel):
             return 0
         node = self.node(parent)
         return len(self._kids(node)) if node.is_dir else 0
-
-    def hasChildren(self, parent=NO_INDEX):
-        node = self.node(parent)
-        return node.is_dir and bool(node.children)
 
     def columnCount(self, parent=NO_INDEX):
         return len(self.COLUMNS)
@@ -110,9 +93,6 @@ class PkgTreeModel(QAbstractItemModel):
         if not index.isValid():
             return Qt.NoItemFlags
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
-
-    def mimeTypes(self):
-        return ["text/uri-list"]
 
 
 class SortProxy(QSortFilterProxyModel):
