@@ -151,3 +151,11 @@ def test_malicious_dlc_label_is_rejected(make_pkg, label):
     path, _ = make_pkg(sfo=sfo)
     with pytest.raises(PkgError, match="invalid file name"):
         Pkg(path)
+
+
+@pytest.mark.parametrize("size", [0, 2, 4095])
+def test_small_file_is_not_a_pkg(tmp_path, size):
+    path = tmp_path / "small.pkg"
+    path.write_bytes(b"x" * size)
+    with pytest.raises(PkgError, match="does not look like"):
+        Pkg(path)
