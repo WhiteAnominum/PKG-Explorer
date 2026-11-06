@@ -247,7 +247,7 @@ class MainWindow(QMainWindow):
         title = pkg.title or os.path.basename(pkg.path)
         warning = ""
         if self.integrity is not None and not self.integrity.ok:
-            parts = ", ".join(integrity.part_label(p) for p in self.integrity.bad)
+            parts = ", ".join(self.integrity.bad)
             warning = (
                 "<p style='color:#d0342c; margin:4px 0 0 0'>⚠ "
                 + _("Damaged PKG: {parts} does not match.").format(parts=html.escape(parts))
@@ -496,7 +496,7 @@ class MainWindow(QMainWindow):
                 ),
             )
         else:
-            parts = "\n".join("• " + integrity.part_label(p) for p in result.bad)
+            parts = "\n".join("• " + p for p in result.bad)
             QMessageBox.warning(
                 self,
                 _("Verify integrity"),
