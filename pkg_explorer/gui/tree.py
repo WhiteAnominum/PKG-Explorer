@@ -50,11 +50,7 @@ class PkgTreeView(QTreeView):
             mime.setUrls([QUrl.fromLocalFile(os.path.join(temp, n.name)) for n in nodes])
         drag = QDrag(self)
         drag.setMimeData(mime)
-        icon = (
-            self.model()
-            .index(self.currentIndex().row(), 0, self.currentIndex().parent())
-            .data(Qt.DecorationRole)
-        )
+        icon = self.currentIndex().siblingAtColumn(0).data(Qt.DecorationRole)
         if icon is not None:
             drag.setPixmap(icon.pixmap(32, 32))
         drag.exec(Qt.CopyAction)
