@@ -32,7 +32,6 @@ class Shadps4Error(Exception):
 
 @dataclass
 class Shadps4Config:
-    user_dir: Path
     install_dirs: list[Path]  # enabled game folders, in shadPS4's order
     addon_dir: Path
 
@@ -88,7 +87,7 @@ def load_config(user_dir: Path) -> Shadps4Config:
             raise Shadps4Error(f"no config.json in {user_dir}")
     except (OSError, ValueError, AttributeError, TypeError, ImportError) as exc:
         raise Shadps4Error(f"{user_dir}: {exc}") from exc
-    return Shadps4Config(user_dir, install_dirs, Path(addon) if addon else user_dir / "addcont")
+    return Shadps4Config(install_dirs, Path(addon) if addon else user_dir / "addcont")
 
 
 def folder_info(folder: Path) -> dict:
@@ -138,26 +137,13 @@ def plan_install(pkg: Pkg, config: Shadps4Config) -> InstallPlan:
         target = config.addon_dir / pkg.output_folder_name
         return InstallPlan("dlc", target, game, version_of(target))
     if pkg.kind == "patch":
-        if game is None:
-            if not config.install_dirs:
-                raise Shadps4Error("no game folder")
-            base = config.install_dirs[0] / pkg.title_id
-        else:
-            base = game
+        base = game or config.install_dirs[0] / pkg.title_id
         # Reuse an existing update folder: shadPS4 only reads one (-UPDATE before -patch).
-        target = next(
-            (
-                base.parent / (base.name + s)
-                for s in UPDATE_SUFFIXES
-                if (base.parent / (base.name + s)).is_dir()
-            ),
-            base.parent / (base.name + "-patch"),
-        )
+        candidates = [base.parent / (base.name + s) for s in UPDATE_SUFFIXES]
+        target = next((c for c in candidates if c.is_dir()), candidates[-1])
         return InstallPlan("patch", target, game, version_of(target))
     if game is not None:  # reinstall over the existing game
         return InstallPlan("game", game, game, version_of(game))
-    if not config.install_dirs:
-        raise Shadps4Error("no game folder")
     plan = InstallPlan("game", config.install_dirs[0] / pkg.title_id, None)
     if len(config.install_dirs) > 1:
         plan.choices = list(config.install_dirs)
