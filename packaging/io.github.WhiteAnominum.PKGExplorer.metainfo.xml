@@ -38,6 +38,20 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.4" date="2026-11-05">
+      <description>
+        <p>Security and reliability update:</p>
+        <ul>
+          <li>Security: a PKG with a malicious Title ID or DLC name can no longer make "Extract all" or "Install in shadPS4" write outside the destination; such packages are now rejected when opened</li>
+          <li>Cancelling an extraction, or a failure during it, no longer deletes a file that was being replaced</li>
+          <li>Content flags are now read correctly, so a package can no longer be mistaken for an update because of a single shared bit</li>
+          <li>A damaged param.sfo in an installed game no longer blocks installing in shadPS4</li>
+          <li>Small files that are not PKGs now get a clear error message</li>
+          <li>The old shadPS4 config.toml is no longer read: open an up-to-date shadPS4 once to convert it to config.json</li>
+          <li>Internal code cleanup with no change in behaviour</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3" date="2026-10-30">
       <description>
         <p>New features:</p>
