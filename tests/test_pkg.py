@@ -139,3 +139,19 @@ def test_concurrent_reads_from_several_threads(make_pkg):
         with ThreadPoolExecutor(max_workers=8) as pool:
             for name, data in pool.map(read, names):
                 assert data == expected[name], name
+
+
+@pytest.mark.parametrize(
+    "value, kind, flags",
+    [
+        (0x40000000, "patch", ["SUBSEQUENT_PATCH"]),
+        (0x41000000, "patch", ["SUBSEQUENT_PATCH", "DELTA_PATCH"]),
+        (0x60000000, "patch", ["SUBSEQUENT_PATCH", "CUMULATIVE_PATCH"]),
+        (0x20000000, "game", []),
+        (0x01000000, "game", []),
+    ],
+)
+def test_content_flags_need_all_their_bits(make_pkg, value, kind, flags):
+    path, _ = make_pkg(content_flags=value)
+    with Pkg(path) as pkg:
+        assert pkg.kind == kind and pkg.flags == flags
