@@ -8,7 +8,7 @@ Folder rules, from shadPS4 (https://github.com/shadps4-emu/shadPS4):
 - DLC: `<DLC folder>/<game title ID>/<any name>`, where the DLC folder is `addon_install_dir`
   or `<user folder>/addcont` (src/core/emulator_settings.cpp, libraries/app_content/app_content.cpp)
 
-The user folder holds config.json (config.toml in older versions) - src/common/path_util.cpp.
+The user folder holds config.json - src/common/path_util.cpp.
 """
 
 from __future__ import annotations
@@ -56,36 +56,21 @@ def default_user_dirs() -> list[Path]:
 def find_user_dir(custom: str = "") -> Path | None:
     candidates = [Path(custom)] if custom else default_user_dirs()
     for d in candidates:
-        if (d / "config.json").is_file() or (d / "config.toml").is_file():
+        if (d / "config.json").is_file():
             return d
     return None
 
 
 def load_config(user_dir: Path) -> Shadps4Config:
     install_dirs: list[Path] = []
-    addon = ""
-    json_path = user_dir / "config.json"
-    toml_path = user_dir / "config.toml"
     try:
-        if json_path.is_file():
-            general = json.loads(json_path.read_text(encoding="utf-8")).get("General", {})
-            for item in general.get("install_dirs", []):
-                if item.get("enabled", True) and item.get("path"):
-                    install_dirs.append(Path(item["path"]))
-            addon = general.get("addon_install_dir") or ""
-        elif toml_path.is_file():
-            import tomllib  # Python 3.11+; older shadPS4 versions only
-
-            gui = tomllib.loads(toml_path.read_text(encoding="utf-8")).get("GUI", {})
-            paths = gui.get("installDirs", [])
-            enabled = gui.get("installDirsEnabled", [])
-            for i, p in enumerate(paths):
-                if p and (enabled[i] if i < len(enabled) else True):
-                    install_dirs.append(Path(p))
-            addon = gui.get("addonInstallDir") or ""
-        else:
-            raise Shadps4Error(f"no config.json in {user_dir}")
-    except (OSError, ValueError, AttributeError, TypeError, ImportError) as exc:
+        config = json.loads((user_dir / "config.json").read_text(encoding="utf-8"))
+        general = config.get("General", {})
+        for item in general.get("install_dirs", []):
+            if item.get("enabled", True) and item.get("path"):
+                install_dirs.append(Path(item["path"]))
+        addon = general.get("addon_install_dir") or ""
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
         raise Shadps4Error(f"{user_dir}: {exc}") from exc
     return Shadps4Config(install_dirs, Path(addon) if addon else user_dir / "addcont")
 
