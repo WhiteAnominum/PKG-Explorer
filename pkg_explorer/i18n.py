@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 
-
 _VARS = ("PKG_EXPLORER_LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG")
 _system_language = next(filter(None, map(os.environ.get, _VARS)), "")
 LANGUAGE = "pt" if _system_language.lower().startswith("pt") else "en"
