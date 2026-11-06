@@ -212,7 +212,7 @@ class Pkg:
         if self.entry_count > MAX_ENTRIES:
             raise _corrupt(f"too many entries ({self.entry_count})")
 
-        self.flags = [name for bit, name in CONTENT_FLAGS if self.content_flags & bit]
+        self.flags = [name for bit, name in CONTENT_FLAGS if (self.content_flags & bit) == bit]
 
     def _parse_entries(self) -> None:
         """Entry table: docs/FORMAT.md, section 2."""
