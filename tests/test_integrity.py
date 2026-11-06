@@ -37,7 +37,7 @@ def test_intact_pkg(pkg_path):
     assert {"header", "digest table", "package body", "param.sfo", "license.dat"} <= set(
         quick.checked
     )
-    assert "game data" not in quick.checked and "game data" in full.checked
+    assert integrity.PFS not in quick.checked and integrity.PFS in full.checked
 
 
 def test_damaged_entry(pkg_path):
@@ -58,7 +58,7 @@ def test_damaged_game_data_needs_full_check(pkg_path):
     damage(pkg_path, middle)
     with Pkg(pkg_path) as pkg:
         assert integrity.verify(pkg).ok
-        assert integrity.verify(pkg, full=True).bad == ["game data"]
+        assert integrity.verify(pkg, full=True).bad == [integrity.PFS]
 
 
 def test_pkg_without_digests(make_pkg):
