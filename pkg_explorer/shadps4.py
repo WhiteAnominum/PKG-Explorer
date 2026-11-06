@@ -14,6 +14,7 @@ The user folder holds config.json - src/common/path_util.cpp.
 from __future__ import annotations
 
 import json
+import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -79,7 +80,7 @@ def folder_info(folder: Path) -> dict:
     """param.sfo of an installed game/update/DLC folder ({} if there is none)."""
     try:
         return parse_sfo((folder / "sce_sys" / "param.sfo").read_bytes())
-    except (OSError, ValueError, IndexError, KeyError):
+    except (OSError, ValueError, IndexError, KeyError, struct.error):
         return {}
 
 
