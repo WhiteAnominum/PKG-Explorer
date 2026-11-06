@@ -129,3 +129,10 @@ def test_other_titles_are_not_matched(config, make_pkg):
     path, _ = make_pkg()
     with Pkg(path) as pkg:
         assert shadps4.plan_install(pkg, config).base_game is None
+
+
+def test_truncated_param_sfo_is_ignored(tmp_path):
+    sfo = tmp_path / "sce_sys" / "param.sfo"
+    sfo.parent.mkdir()
+    sfo.write_bytes(b"\x00PSF")
+    assert shadps4.folder_info(tmp_path) == {}
