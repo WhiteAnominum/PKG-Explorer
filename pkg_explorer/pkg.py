@@ -233,6 +233,7 @@ class Pkg:
                 self.sfo = parse_sfo(self.read_raw(sfo_entry.offset, sfo_entry.size))
             except (ValueError, IndexError, struct.error) as exc:
                 raise PkgError(_("invalid param.sfo")) from exc
+        self.output_folder_name = self._folder_name()
 
     def _entry_by_id(self, entry_id: int) -> PkgEntry | None:
         return next((e for e in self.entries if e.id == entry_id), None)
@@ -254,17 +255,18 @@ class Pkg:
             return "dlc"
         return "game"
 
-    @property
-    def output_folder_name(self) -> str:
+    def _folder_name(self) -> str:
         """Folder used by the original extractor / shadPS4: TITLEID, TITLEID-patch or
-        TITLEID/DLC."""
+        TITLEID/DLC. Its parts come from the PKG, so they must not be able to escape the
+        destination folder (see check_name)."""
+        title_id = check_name(self.title_id)
         if self.kind == "patch":
-            return f"{self.title_id}-patch"
+            return f"{title_id}-patch"
         if self.kind == "dlc":
             parts = str(self.sfo.get("CONTENT_ID", self.content_id)).split("-")
             if len(parts) > 2:
-                return os.path.join(self.title_id, parts[2])
-        return self.title_id
+                return os.path.join(title_id, check_name(parts[2]))
+        return title_id
 
     # ---- keys ----
 
